@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+motor
+langchain
+langchain-openai
+pydantic>=2.0
+langchain-community
+langchain-mongodb

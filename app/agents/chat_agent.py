@@ -1,0 +1,68 @@
+# app/agents/chat_agent.py
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
+from app.config import settings
+from typing import Dict
+
+# This fix is not strictly necessary here if plan_agent is imported first,
+# but it's good practice to keep it for robustness.
+from langchain_core.caches import BaseCache
+ChatOpenAI.model_rebuild()
+
+# Initialize the language model
+llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0.7)
+
+# Create a prompt template for the chatbot
+# This template is designed for conversation and includes a placeholder for memory
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a friendly and knowledgeable fitness and nutrition chatbot. Your role is to assist users with their health-related questions in a conversational manner. Be supportive and encouraging. If you don't know the answer, say so. Keep your answers concise and easy to understand."),
+    MessagesPlaceholder(variable_name="history"),
+    ("human", "{input}")
+])
+
+# Initialize an output parser to get the string response
+output_parser = StrOutputParser()
+
+# Create the base runnable chain using LangChain Expression Language (LCEL)
+base_chain = prompt | llm | output_parser
+
+# Create a chain that incorporates message history, automatically storing it in MongoDB.
+# The lambda function is called for each request, creating a history object tied to the specific session_id.
+chain_with_history = RunnableWithMessageHistory(
+    base_chain,
+    lambda session_id: MongoDBChatMessageHistory(
+        connection_string=settings.MONGODB_URI,
+        session_id=session_id,
+        database_name=settings.DB_NAME,
+        collection_name="chat_histories",  # We'll use a new collection for chat histories
+    ),
+    input_messages_key="input",
+    history_messages_key="history",
+)
+
+async def get_chat_response(user_input: str, session_id: str) -> str:
+    """
+    Generates a conversational response from the chatbot agent using RunnableWithMessageHistory
+    with MongoDB as the message store. The history is managed automatically by the chain.
+    
+    Args:
+        user_input: The user's latest message.
+        session_id: The unique identifier for the conversation session (we will use the user_id).
+    
+    Returns:
+        The agent's response as a string.
+    """
+    # The config dictionary is required to pass the session_id to the chain.
+    # The chain will now automatically load history from and save history to MongoDB
+    # based on the provided session_id.
+    config = {"configurable": {"session_id": session_id}}
+    
+    response = await chain_with_history.ainvoke(
+        {"input": user_input},
+        config=config
+    )
+    
+    return response

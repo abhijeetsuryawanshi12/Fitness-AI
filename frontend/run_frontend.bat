@@ -1,0 +1,6 @@
+@echo off
+echo Installing frontend dependencies...
+python -m pip install -r requirements.txt
+
+echo Starting Streamlit server...
+python -m streamlit run streamlit_app.py
