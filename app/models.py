@@ -1,7 +1,8 @@
+# app/models.py
 from pydantic import BaseModel, Field, ConfigDict, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
-from typing import Optional, Union, Dict, Literal, Any
-from datetime import datetime
+from typing import Optional, Union, Dict, Literal, Any, List
+from datetime import datetime, timezone
 from bson import ObjectId
 
 # A custom Pydantic type for handling MongoDB's ObjectId.
@@ -34,7 +35,7 @@ class User(BaseModel):
     weight: float
     goal: str
     time_period: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -55,8 +56,9 @@ class Plan(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
     user_id: PyObjectId
     type: Literal["workout", "diet"]
-    content: Union[str, Dict]
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Content will now be a structured dictionary from the AI
+    content: Dict
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(
@@ -66,10 +68,39 @@ class Plan(BaseModel):
             "example": {
                 "user_id": "60d5f3f7e6c4b4a3e8e1f4b1",
                 "type": "workout",
-                "content": "A detailed workout plan will be generated here...",
+                "content": {"plan_summary": "A detailed workout plan..."},
             }
         },
     )
+
+# --- NEW MODEL FOR TASKS ---
+class Task(BaseModel):
+    id: Optional[PyObjectId] = Field(None, alias="_id")
+    user_id: PyObjectId
+    plan_id: PyObjectId
+    task_date: datetime
+    description: str
+    type: Literal["workout", "diet"]
+    completed: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "user_id": "60d5f3f7e6c4b4a3e8e1f4b1",
+                "plan_id": "60d5f3f7e6c4b4a3e8e1f4b2",
+                "task_date": "2025-07-15T10:00:00Z",
+                "description": "Morning Run: 30 minutes",
+                "type": "workout",
+                "completed": False,
+            }
+        }
+    )
+
+class TaskUpdate(BaseModel):
+    completed: bool
 
 class ChatMessage(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
@@ -77,14 +108,14 @@ class ChatMessage(BaseModel):
     user_id: PyObjectId
     message: str
     sender: Literal["user", "agent"]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True
     )
 
-# --- NEW MODELS FOR CHAT API ---
+# --- MODELS FOR CHAT API ---
 class ChatRequest(BaseModel):
     """Request model for the chat endpoint."""
     user_id: str

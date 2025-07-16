@@ -3,102 +3,72 @@ import requests
 import json
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
 BACKEND_URL = "http://127.0.0.1:8080"
 st.set_page_config(layout="wide")
 st.title("FitnessAI Companion")
 
-# --- HELPER FUNCTIONS: MOCK DATA AND STYLING ---
-def get_mock_data():
-    return {
-        'calories_today': 1664,
-        'calories_goal': 2500,
-        'protein_today_g': 80,
-        'protein_goal_g': 150,
-        'carbs_today_g': 200,
-        'carbs_goal_g': 300,
-        'avg_calories_monthly': 6778,
-        'avg_protein_monthly': 155,
-        'avg_carbs_monthly': 290,
-        'calories_chart': pd.DataFrame({
-            'Day': range(1, 31),
-            'Calories': [1800, 1900, 2100, 2000, 2200, 2300, 2100, 2050, 2400, 2500,
-                         2300, 2200, 2600, 2700, 2550, 2400, 2350, 2800, 2900, 2700,
-                         2600, 3000, 2850, 2750, 2650, 2950, 3100, 3050, 2900, 3200]
-        }),
-        'recipes': [
-            {"name": "Various dried fruits", "support": "Provide nutritional support", "carb": 2, "fat": 4, "protein": 1},
-            {"name": "Organic fruit assortment", "support": "Substance consist of protein", "carb": 2, "fat": 3, "protein": 8, "highlight": True},
-            {"name": "Healthy fruits set", "support": "Provide nutritional support", "carb": 5, "fat": 1, "protein": 9},
-        ]
-    }
-
+# --- STYLING ---
 def load_css():
+    """Loads custom CSS for styling the application."""
     st.markdown("""
     <style>
         .stApp { background-color: #0F172A; }
         .dark-container { background-color: #1F2937; padding: 2rem; border-radius: 10px; color: white; margin-bottom: 2rem; }
-        .metric-card { background-color: #374151; padding: 1.5rem; border-radius: 10px; text-align: center; color: white; }
-        .metric-card-yellow { background-color: #FBBF24; padding: 1.5rem; border-radius: 10px; text-align: center; color: #1F2937; }
-        .metric-card-yellow h3, .metric-card-yellow p { color: #1F2937; }
-        .metric-card p, .metric-card-yellow p { font-size: 2.5rem; font-weight: bold; margin: 0; }
-        .metric-card h3, .metric-card-yellow h3 { font-size: 1.2rem; font-weight: normal; margin-bottom: 10px; }
-        .progress-bar-container { margin-bottom: 1rem; }
-        .progress-label { font-size: 1rem; font-weight: bold; color: #374151; margin-bottom: 0.5rem; }
-        .progress-bar-bg { background-color: #E5E7EB; border-radius: 5px; height: 10px; }
-        .progress-bar-fill { background-color: #3B82F6; height: 10px; border-radius: 5px; }
-        .recipe-card { background-color: white; padding: 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid #E5E7EB; display: flex; align-items: center; transition: all 0.3s ease; }
-        .recipe-card-highlight { background-color: #1F2937; color: white; border: 1px solid #1F2937; }
-        .recipe-card-highlight .recipe-support { color: #D1D5DB; }
-        .recipe-title { font-weight: bold; }
-        .recipe-support { font-size: 0.9rem; color: #6B7280; }
-        .recipe-nutrition span { margin-left: 15px; font-size: 0.9rem; }
+        .metric-card { background-color: #374151; padding: 1.5rem; border-radius: 10px; text-align: center; color: white; height: 100%; }
+        .metric-card p { font-size: 2.5rem; font-weight: bold; margin: 0; color: #1E90FF; }
+        .metric-card h3 { font-size: 1.2rem; font-weight: normal; margin-bottom: 10px; color: #D1D5DB; }
+        .task-list { list-style-type: none; padding-left: 0; }
+        .task-item { background-color: #374151; margin-bottom: 0.5rem; padding: 0.75rem 1rem; border-radius: 8px; display: flex; align-items: center; }
+        .task-item.completed { background-color: #059669; text-decoration: line-through; color: #D1D5DB; }
+        .stCheckbox { margin-right: 1rem; }
+        .stExpander { background-color: #374151 !important; border-radius: 8px !important; margin-bottom: 1rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- BACKEND API FUNCTIONS ---
-def create_user(name, age, height, weight, goal, time_period):
-    url = f"{BACKEND_URL}/onboarding/user"
-    user_data = {"name": name, "age": age, "height": height, "weight": weight, "goal": goal, "time_period": time_period}
+def api_request(method, endpoint, **kwargs):
+    """Helper function to make API requests."""
+    url = f"{BACKEND_URL}{endpoint}"
     try:
-        response = requests.post(url, data=json.dumps(user_data), headers={"Content-Type": "application/json"})
+        response = requests.request(method, url, **kwargs)
         response.raise_for_status()
+        if response.status_code == 204:
+            return True
         return response.json()
     except requests.exceptions.RequestException as e:
-        st.error(f"Error connecting to the backend: {e}")
+        st.error(f"API Error: {e}")
         return None
+
+def create_user(name, age, height, weight, goal, time_period):
+    user_data = {"name": name, "age": age, "height": height, "weight": weight, "goal": goal, "time_period": time_period}
+    return api_request("post", "/onboarding/user", json=user_data)
 
 def generate_plan(user_id, plan_type):
-    url = f"{BACKEND_URL}/plan/generate"
-    try:
-        response = requests.post(url, json={"user_id": user_id, "type": plan_type})
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error generating plan: {e}")
-        return None
-
-def get_user_plans(user_id):
-    url = f"{BACKEND_URL}/plan/user/{user_id}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching user plans: {e}")
-        return None
+    return api_request("post", "/plan/generate", json={"user_id": user_id, "type": plan_type})
 
 def post_chat_message(user_id, message):
-    url = f"{BACKEND_URL}/chat/"
-    try:
-        response = requests.post(url, json={"user_id": user_id, "message": message})
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error in chat: {e}")
-        return None
+    return api_request("post", "/chat/", json={"user_id": user_id, "message": message})
+
+# --- TASK AND PROGRESS API FUNCTIONS ---
+@st.cache_data(ttl=60)
+def get_daily_tasks(user_id):
+    """Fetches daily tasks for a user."""
+    return api_request("get", f"/tasks/user/{user_id}")
+
+@st.cache_data(ttl=300)
+def get_progress_data(user_id: str, period: str):
+    """Fetches nutritional progress data for a user for a specific period."""
+    return api_request("get", f"/progress/user/{user_id}?period={period}")
+
+def toggle_task_completion(task_id):
+    """Toggles the completion status of a single task."""
+    response = api_request("put", f"/tasks/{task_id}/toggle_completion")
+    if response:
+        st.cache_data.clear()
+    return response
 
 # --- UI PAGES ---
 def onboarding_page():
@@ -125,121 +95,201 @@ def onboarding_page():
                     st.error("Failed to create profile. Please check the backend connection.")
 
 def dashboard_page():
-    load_css()
-    mock_data = get_mock_data()
+    """Displays the dynamic progress dashboard."""
+    st.header("Your Nutritional Progress")
+
+    period = st.selectbox(
+        "Select a time period to view:",
+        ("Daily", "Weekly", "Monthly"),
+        key="progress_period"
+    ).lower()
+
+    with st.spinner(f"Analyzing your {period} progress..."):
+        progress_data = get_progress_data(st.session_state.user_id, period)
+
+    if not progress_data:
+        st.warning(f"Could not fetch {period} progress data. Complete some diet tasks to see your progress.")
+        return
 
     st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-    st.subheader("Progress tracker")
     
-    col1, col2 = st.columns([1, 2])
+    summary = progress_data.get("summary", {})
+    chart_data = progress_data.get("chart_data", [])
+
+    st.subheader(f"Total Intake ({period.capitalize()})")
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown(f"""<div class="metric-card-yellow"><h3>Avg Calories</h3><p>{mock_data['avg_calories_monthly']}</p></div>""", unsafe_allow_html=True)
-    with col2:
-        sub_col1, sub_col2 = st.columns(2)
-        with sub_col1:
-            st.markdown(f"""<div class="metric-card"><h3>Avg Proteins</h3><p>{mock_data['avg_protein_monthly']} ml</p></div>""", unsafe_allow_html=True)
-        with sub_col2:
-            st.markdown(f"""<div class="metric-card"><h3>Avg Carbs</h3><p>{mock_data['avg_carbs_monthly']} gm</p></div>""", unsafe_allow_html=True)
-
-    st.subheader("Calories (KCL)")
-    st.line_chart(mock_data['calories_chart'].set_index('Day'), use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.subheader("Calories for today")
-    col1, col2 = st.columns(2)
-    with col1:
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=mock_data['calories_today'],
-            title={'text': "Today's Calorie Intake"},
-            gauge={
-                'axis': {'range': [None, mock_data['calories_goal']]},
-                'bar': {'color': "#FBBF24"},
-                'steps': [{'range': [0, mock_data['calories_goal'] * 0.8], 'color': '#374151'}],
-            }
-        ))
-        fig.update_layout(height=250)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.subheader("Overview analytics for today")
-        for item, current, goal in [("Calories", mock_data['calories_today'], mock_data['calories_goal']),
-                                    ("Proteins", mock_data['protein_today_g'], mock_data['protein_goal_g']),
-                                    ("Carbs", mock_data['carbs_today_g'], mock_data['carbs_goal_g'])]:
-            percentage = min((current / goal) * 100, 100)
-            st.markdown(f"""
-            <div class="progress-bar-container">
-                <div class="progress-label">{item}</div>
-                <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" style="width: {percentage}%;"></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.subheader("Recipes")
-    for recipe in mock_data['recipes']:
-        highlight_class = "recipe-card-highlight" if recipe.get("highlight") else ""
         st.markdown(f"""
-        <div class="recipe-card {highlight_class}">
-            <div>
-                <div class="recipe-title">{recipe['name']}</div>
-                <div class="recipe-support">{recipe['support']}</div>
-            </div>
-            <div style="flex-grow: 1;"></div>
-            <div class="recipe-nutrition">
-                <span>Carb {recipe['carb']}%</span>
-                <span>Fats {recipe['fat']}%</span>
-                <span>Protein {recipe['protein']}%</span>
-            </div>
+        <div class="metric-card">
+            <h3>Total Calories</h3>
+            <p>{summary.get('total_calories', 0)}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Total Protein (g)</h3>
+            <p>{summary.get('total_protein_g', 0)}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Total Carbs (g)</h3>
+            <p>{summary.get('total_carbs_g', 0)}</p>
         </div>
         """, unsafe_allow_html=True)
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.subheader(f"Calorie Intake by Day ({period.capitalize()})")
+    if not chart_data:
+        st.info(f"No completed diet tasks with calorie data for this period.")
+    else:
+        df = pd.DataFrame(chart_data)
+        df['time_label'] = pd.to_datetime(df['time_label']).dt.strftime('%b %d')
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=df['time_label'],
+            y=df['calories'],
+            name='Calories',
+            marker_color='#1E90FF'
+        ))
+
+        fig.update_layout(
+            plot_bgcolor='#1F2937',
+            paper_bgcolor='#1F2937',
+            xaxis=dict(title='Date', color='white', gridcolor='#374151'),
+            yaxis=dict(title='Calories', color='white', gridcolor='#374151'),
+            legend=dict(font=dict(color='white')),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def daily_tasks_page():
+    st.header(f"Today's Plan - {datetime.now(timezone.utc).strftime('%A, %B %d')}")
+    
+    tasks = get_daily_tasks(st.session_state.user_id)
+    
+    if tasks is None:
+        st.warning("Could not fetch tasks for today. Please try again later.")
+        return
+
+    if not tasks:
+        st.info("You have no tasks scheduled for today. Generate a workout or diet plan to get started!")
+        return
+
+    workout_tasks = [t for t in tasks if t['type'] == 'workout']
+    diet_tasks = [t for t in tasks if t['type'] == 'diet']
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("🏋️ Workout")
+        if not workout_tasks:
+            st.success("No workout scheduled for today. Time for active recovery!")
+        else:
+            for task in workout_tasks:
+                st.checkbox(
+                    task['description'], 
+                    value=task['completed'], 
+                    key=f"task_{task['_id']}",
+                    on_change=toggle_task_completion,
+                    args=(task['_id'],)
+                )
+
+    with col2:
+        st.subheader("🥗 Diet")
+        if not diet_tasks:
+            st.success("No specific diet tasks for today. Remember to eat healthy!")
+        else:
+            for task in diet_tasks:
+                st.checkbox(
+                    task['description'], 
+                    value=task['completed'], 
+                    key=f"task_{task['_id']}",
+                    on_change=toggle_task_completion,
+                    args=(task['_id'],)
+                )
+
 def main_app_page():
     st.sidebar.header(f"Welcome, {st.session_state.user_name}!")
-    tab1, tab2, tab3 = st.tabs(["Plan Generation", "Dashboard", "Chatbot"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Daily Tasks", "Plan Generation", "Dashboard", "Chatbot"])
 
     with tab1:
-        st.header("Generate a New Plan")
-        plan_type = st.radio("Select plan type:", ("workout", "diet"), horizontal=True)
-        if st.button("Generate Plan"):
-            with st.spinner(f"Generating your personalized {plan_type} plan..."):
-                plan = generate_plan(st.session_state.user_id, plan_type)
-                if plan and "content" in plan:
-                    st.markdown(plan["content"])
-                else:
-                    st.error("Could not retrieve the plan.")
+        daily_tasks_page()
 
     with tab2:
+        st.header("Generate a New Plan")
+        st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab, starting from today.")
+        plan_type = st.radio("Select plan type:", ("workout", "diet"), horizontal=True, key="plan_gen_radio")
+        
+        if st.button("Generate Plan"):
+            with st.spinner(f"Generating your personalized {plan_type} plan... This may take a moment."):
+                plan = generate_plan(st.session_state.user_id, plan_type)
+                if plan and "content" in plan:
+                    st.session_state.last_generated_plan = plan
+                    st.cache_data.clear()
+                    st.success(f"Successfully generated new {plan_type} plan!")
+                    st.rerun()
+                else:
+                    st.error("Could not generate the plan. Please try again.")
+
+        if st.session_state.get("last_generated_plan"):
+            plan_data = st.session_state.last_generated_plan
+            plan_content = plan_data.get("content", {})
+            st.markdown("---")
+            st.subheader("Most Recently Generated Plan")
+            st.markdown(f"### {plan_content.get('title', 'Generated Plan')}")
+            
+            daily_schedule = plan_content.get("daily_tasks", [])
+            if not daily_schedule:
+                st.warning("The generated plan did not contain a schedule.")
+            else:
+                for day_plan in daily_schedule:
+                    with st.expander(f"**Day {day_plan.get('day')}: {day_plan.get('theme')}**"):
+                        for task_desc in day_plan.get("tasks", []):
+                            st.write(f"- {task_desc}")
+    
+    with tab3:
         dashboard_page()
 
-    with tab3:
+    with tab4:
         st.header("Chat with your AI Assistant")
+        if "chat_messages" not in st.session_state:
+            st.session_state.chat_messages = []
+        
         for msg in st.session_state.chat_messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
+
         if prompt := st.chat_input("Ask me anything about fitness or nutrition..."):
             st.session_state.chat_messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
+            
             with st.spinner("Thinking..."):
                 response = post_chat_message(st.session_state.user_id, prompt)
                 if response and "response" in response:
-                    st.session_state.chat_messages.append({"role": "assistant", "content": response["response"]})
+                    assistant_response = response["response"]
+                    st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
                     with st.chat_message("assistant"):
-                        st.markdown(response["response"])
+                        st.markdown(assistant_response)
                 else:
                     st.error("The assistant is currently unavailable.")
 
-# --- SESSION STATE INITIALIZATION ---
+# --- SESSION STATE INITIALIZATION & ROUTER ---
 if 'user_id' not in st.session_state:
     st.session_state.user_id = None
 if 'user_name' not in st.session_state:
     st.session_state.user_name = None
-if 'chat_messages' not in st.session_state:
-    st.session_state.chat_messages = []
+if 'last_generated_plan' not in st.session_state:
+    st.session_state.last_generated_plan = None
 
-# --- ROUTER ---
+load_css()
+
 if st.session_state.user_id is None:
     onboarding_page()
 else:
