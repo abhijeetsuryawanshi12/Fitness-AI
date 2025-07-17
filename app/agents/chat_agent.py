@@ -1,11 +1,10 @@
-# app/agents/chat_agent.py
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
 from app.config import settings
-from typing import Dict
+from typing import Dict, Any
 
 # This fix is not strictly necessary here if plan_agent is imported first,
 # but it's good practice to keep it for robustness.
@@ -15,13 +14,32 @@ ChatOpenAI.model_rebuild()
 # Initialize the language model
 llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0.7)
 
-# Create a prompt template for the chatbot
-# This template is designed for conversation and includes a placeholder for memory
+# Create a new prompt template that includes context for the RAG technique.
+# This template is designed for conversation and includes a placeholder for memory,
+# the user's plan, and their daily tasks.
 prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a friendly and knowledgeable fitness and nutrition chatbot. Your role is to assist users with their health-related questions in a conversational manner. Be supportive and encouraging. If you don't know the answer, say so. Keep your answers concise and easy to understand."),
+    ("system", """You are a friendly and knowledgeable fitness and nutrition chatbot. Your role is to assist users with their health-related questions in a conversational manner.
+
+You have been provided with the user's current fitness/diet plan and their list of tasks for today. Use this information to provide more personalized and relevant advice.
+
+- If the user asks about their plan, refer to the 'Plan Context'.
+- If they ask about today's activities, refer to the 'Today's Tasks'.
+- Be supportive and encouraging.
+- If you don't know the answer, say so.
+- Keep your answers concise and easy to understand.
+
+---
+PLAN CONTEXT:
+{plan_context}
+---
+TODAY'S TASKS:
+{tasks_context}
+---
+"""),
     MessagesPlaceholder(variable_name="history"),
     ("human", "{input}")
 ])
+
 
 # Initialize an output parser to get the string response
 output_parser = StrOutputParser()
@@ -37,21 +55,29 @@ chain_with_history = RunnableWithMessageHistory(
         connection_string=settings.MONGODB_URI,
         session_id=session_id,
         database_name=settings.DB_NAME,
-        collection_name="chat_histories",  # We'll use a new collection for chat histories
+        collection_name="chat_histories",
     ),
     input_messages_key="input",
     history_messages_key="history",
 )
 
-async def get_chat_response(user_input: str, session_id: str) -> str:
+async def get_chat_response(
+    user_input: str,
+    session_id: str,
+    plan_context: str,
+    tasks_context: str
+) -> str:
     """
     Generates a conversational response from the chatbot agent using RunnableWithMessageHistory
     with MongoDB as the message store. The history is managed automatically by the chain.
-    
+    This version is enhanced with RAG to include plan and task context.
+
     Args:
         user_input: The user's latest message.
         session_id: The unique identifier for the conversation session (we will use the user_id).
-    
+        plan_context: A string containing the user's current plan details.
+        tasks_context: A string containing the user's tasks for the current day.
+
     Returns:
         The agent's response as a string.
     """
@@ -59,10 +85,17 @@ async def get_chat_response(user_input: str, session_id: str) -> str:
     # The chain will now automatically load history from and save history to MongoDB
     # based on the provided session_id.
     config = {"configurable": {"session_id": session_id}}
-    
+
+    # The input to the chain now includes the user's message plus the retrieved context.
+    input_data = {
+        "input": user_input,
+        "plan_context": plan_context,
+        "tasks_context": tasks_context
+    }
+
     response = await chain_with_history.ainvoke(
-        {"input": user_input},
+        input_data,
         config=config
     )
-    
+
     return response

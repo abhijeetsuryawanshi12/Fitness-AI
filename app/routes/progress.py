@@ -37,7 +37,7 @@ async def get_user_progress(
 
     # --- Fetch completed diet tasks for the period ---
     tasks_cursor = db.tasks.find({
-        "user_id": user_object_id,
+        "user_id": user_id,
         "type": "diet",
         "completed": True,
         "task_date": {"$gte": start_date}

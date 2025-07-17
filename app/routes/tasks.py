@@ -1,4 +1,3 @@
-# app/routes/tasks.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
@@ -6,7 +5,7 @@ from app.models import Task, TaskUpdate
 from typing import List
 from bson import ObjectId
 from bson.errors import InvalidId
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -23,11 +22,10 @@ async def get_tasks_for_today(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Retrieves all workout and diet tasks for a given user for the current calendar day.
+    Retrieves all workout and diet tasks for a given user for the current calendar day, based on UTC.
     """
     try:
         user_obj_id = ObjectId(user_id)
-        user_id2 = user_id
     except InvalidId:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -41,13 +39,13 @@ async def get_tasks_for_today(
             detail=f"User with id {user_id} not found"
         )
 
-    # Define the start and end of the current day
-    today = datetime.utcnow().date()
-    start_of_day = datetime.combine(today, time.min)
-    end_of_day = datetime.combine(today, time.max)
+    # Define the start and end of the current day in UTC
+    today = datetime.now(timezone.utc).date()
+    start_of_day = datetime.combine(today, time.min, tzinfo=timezone.utc)
+    end_of_day = datetime.combine(today, time.max, tzinfo=timezone.utc)
 
     cursor = db[TASK_COLLECTION].find({
-        "user_id": user_id2,
+        "user_id": user_id, # <-- CORRECTED: Use the ObjectId for the query
         "task_date": {
             "$gte": start_of_day,
             "$lte": end_of_day
