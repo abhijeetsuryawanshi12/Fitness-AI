@@ -1,16 +1,21 @@
 # app/agents/plan_agent.py
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.caches import BaseCache
 from app.config import settings
 
 # --- FIX for Pydantic v2 compatibility issue with LangChain ---
-ChatOpenAI.model_rebuild()
+# ChatOpenAI.model_rebuild()
 # --- End of fix ---
 
 # Initialize the language model
-llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.7)
+# llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.7)
+llm = ChatGroq(
+    groq_api_key=settings.GROQ_API_KEY,
+    model_name="llama3-8b-8192"
+)
 
 # Create a prompt template that requests a JSON output
 prompt_template = ChatPromptTemplate.from_template(

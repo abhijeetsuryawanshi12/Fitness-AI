@@ -12,6 +12,7 @@ class Settings:
     MONGODB_URI: str = os.getenv("MONGODB_URI")
     DB_NAME: str = os.getenv("DB_NAME", "user_fitness")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
 
     if not MONGODB_URI:
         raise ValueError("MONGODB_URI environment variable not set in .env file")

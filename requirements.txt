@@ -7,3 +7,4 @@ langchain-openai
 pydantic>=2.0
 langchain-community
 langchain-mongodb
+langchain-groq

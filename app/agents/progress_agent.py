@@ -1,4 +1,5 @@
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from app.config import settings
@@ -6,7 +7,11 @@ from typing import List
 import datetime
 
 # Initialize a powerful language model suitable for JSON generation and analysis
-llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.2)
+# llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.2)
+llm = ChatGroq(
+    groq_api_key=settings.GROQ_API_KEY,
+    model_name="llama3-8b-8192"
+)
 
 # This prompt is engineered to take a list of completed diet tasks (food items)
 # and return a structured JSON object containing a nutritional summary.
