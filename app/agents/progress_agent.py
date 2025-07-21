@@ -1,29 +1,21 @@
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
-from langchain.chat_models import init_chat_model
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from app.config import settings
 from typing import List
-import datetime
 import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Initialize a powerful language model suitable for JSON generation and analysis
-# llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.2)
-# llm = ChatGroq(
-#     groq_api_key=settings.GROQ_API_KEY,
-#     model_name="llama3-8b-8192"
-# )
-
-# Initialize the language model with Google Gemini
-llm = init_chat_model("gemini-2.0-flash",
-                      model_provider="google_genai",
-                      api_key=os.environ.get("GEMINI_API_KEY"),
-                      temperature=0.2)
+# Initialize the language model with Google Gemini.
+# Using ChatGoogleGenerativeAI directly is more explicit and less prone to config errors.
+# The 'google_api_key' parameter is used, which is specific to this provider.
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    google_api_key=os.environ.get("GEMINI_API_KEY"),
+    temperature=0.2
+)
 
 # This prompt is engineered to take a list of completed diet tasks (food items)
 # and return a structured JSON object containing a nutritional summary.
@@ -54,8 +46,15 @@ prompt_template = ChatPromptTemplate.from_template(
     """
 )
 
-# Chain the components together
-progress_chain = prompt_template | llm | StrOutputParser()
+# Chain the components together.
+# To ensure the model returns valid JSON, we bind it with a generation config
+# that sets the response mime type to application/json. This is a robust way
+# to get structured data from Gemini models.
+progress_chain = (
+    prompt_template 
+    | llm.bind(generation_config={"response_mime_type": "application/json"}) 
+    | StrOutputParser()
+)
 
 async def analyze_diet_progress(tasks: List[str]) -> str:
     """

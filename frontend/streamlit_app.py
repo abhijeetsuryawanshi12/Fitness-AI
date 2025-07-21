@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date
 
 
 # --- CONFIGURATION ---
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL = "http://127.0.0.1:5000"
 st.set_page_config(layout="wide", page_title="FitnessAI Companion")
 st.title("FitnessAI Companion")
 
@@ -37,7 +37,7 @@ def api_request(method, endpoint, **kwargs):
         if 'json' in kwargs and kwargs['json'] is not None:
             kwargs['data'] = json.dumps(kwargs.pop('json'), default=str)
             kwargs['headers'] = {'Content-Type': 'application/json'}
-        
+
         response = requests.request(method, url, **kwargs)
         response.raise_for_status()
         if response.status_code == 204: return True
