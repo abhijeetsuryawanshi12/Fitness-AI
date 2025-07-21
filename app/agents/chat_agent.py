@@ -1,4 +1,5 @@
 from langchain_openai import ChatOpenAI
+from langchain.chat_models import init_chat_model
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -6,6 +7,11 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
 from app.config import settings
 from typing import Dict, Any
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # This fix is not strictly necessary here if plan_agent is imported first,
 # but it's good practice to keep it for robustness.
@@ -14,10 +20,15 @@ from langchain_core.caches import BaseCache
 
 # Initialize the language model
 # llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0.7)
-llm = ChatGroq(
-    groq_api_key=settings.GROQ_API_KEY,
-    model_name="llama3-8b-8192"
-)
+# llm = ChatGroq(
+#     groq_api_key=settings.GROQ_API_KEY,
+#     model_name="llama3-8b-8192"
+# )
+
+llm = init_chat_model("gemini-2.0-flash",
+                      model_provider="google_genai",
+                      api_key=os.environ.get("GEMINI_API_KEY"),
+                      temperature=0.7)
 
 # Create a new prompt template that includes context for the RAG technique.
 # This template is designed for conversation and includes a placeholder for memory,

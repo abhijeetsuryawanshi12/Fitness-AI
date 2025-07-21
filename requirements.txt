@@ -8,3 +8,6 @@ pydantic>=2.0
 langchain-community
 langchain-mongodb
 langchain-groq
+langchain[google-genai]
+python_dotenv
+logging

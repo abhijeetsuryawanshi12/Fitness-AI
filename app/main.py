@@ -1,3 +1,4 @@
+# app/main.py
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.db import connect_to_mongo, close_mongo_connection
@@ -5,7 +6,8 @@ from app.routes.onboarding import router as onboarding_router
 from app.routes.plan import router as plan_router
 from app.routes.chat import router as chat_router
 from app.routes.tasks import router as tasks_router
-from app.routes.progress import router as progress_router # <-- IMPORT NEW ROUTER
+from app.routes.progress import router as progress_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +29,7 @@ app.include_router(onboarding_router)
 app.include_router(plan_router)
 app.include_router(chat_router)
 app.include_router(tasks_router)
-app.include_router(progress_router) # <-- INCLUDE NEW ROUTER
+app.include_router(progress_router)
 
 @app.get("/", tags=["Root"])
 def read_root():

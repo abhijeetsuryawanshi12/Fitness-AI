@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 
 # --- CONFIGURATION ---
-BACKEND_URL = "http://127.0.0.1:8080"
+BACKEND_URL = "http://127.0.0.1:8000"
 st.set_page_config(layout="wide")
 st.title("FitnessAI Companion")
 

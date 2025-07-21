@@ -1,3 +1,4 @@
+# app/routes/chat.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database

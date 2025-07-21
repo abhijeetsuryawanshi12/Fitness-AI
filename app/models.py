@@ -1,4 +1,3 @@
-# app/models.py
 from pydantic import BaseModel, Field, ConfigDict, GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 from typing import Optional, Union, Dict, Literal, Any, List
@@ -54,7 +53,7 @@ class User(BaseModel):
 
 class Plan(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
-    user_id: PyObjectId
+    user_id: str  # Changed from PyObjectId to str
     type: Literal["workout", "diet"]
     # Content will now be a structured dictionary from the AI
     content: Dict
@@ -76,8 +75,8 @@ class Plan(BaseModel):
 # --- NEW MODEL FOR TASKS ---
 class Task(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
-    user_id: PyObjectId
-    plan_id: PyObjectId
+    user_id: str  # Changed from PyObjectId to str
+    plan_id: str  # Changed from PyObjectId to str
     task_date: datetime
     description: str
     type: Literal["workout", "diet"]

@@ -45,7 +45,7 @@ async def get_tasks_for_today(
     end_of_day = datetime.combine(today, time.max, tzinfo=timezone.utc)
 
     cursor = db[TASK_COLLECTION].find({
-        "user_id": user_id, # <-- CORRECTED: Use the ObjectId for the query
+        "user_id": user_id, # Query using the string user_id, which is consistent with the DB
         "task_date": {
             "$gte": start_of_day,
             "$lte": end_of_day
