@@ -13,20 +13,10 @@ from pydantic import BaseModel, Field
 from typing import List
 import json
 import logging
+from datetime import date
 
 # Load environment variables from .env file
 load_dotenv()
-
-# --- FIX for Pydantic v2 compatibility issue with LangChain ---
-# ChatOpenAI.model_rebuild()
-# --- End of fix ---
-
-# Initialize the language model
-# llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-4-turbo", temperature=0.7)
-# llm = ChatGroq(
-#     groq_api_key=settings.GROQ_API_KEY,
-#     model_name="llama3-8b-8192"
-# )
 
 class DailyTask(BaseModel):
     day: int = Field(description="Day number")
@@ -39,108 +29,116 @@ class Plan(BaseModel):
 
 # Initialize the language model with JSON mode if supported
 try:
-    # For models that support response_format
     llm = init_chat_model(
-        "gemini-2.0-flash",
-        model_provider="google_genai",
-        api_key=os.environ.get("GEMINI_API_KEY"),
-        temperature=0.7,
-        # Add these parameters for better JSON compliance
-        model_kwargs={
-            "response_format": {"type": "json_object"}  # This may not work for all models
-        }
+        "gemini-2.0-flash", model_provider="google_genai",
+        api_key=os.environ.get("GEMINI_API_KEY"), temperature=0.7,
+        model_kwargs={"response_format": {"type": "json_object"}}
     )
 except:
-    # Fallback without response_format
     llm = init_chat_model(
-        "gemini-2.0-flash",
-        model_provider="google_genai",
-        api_key=os.environ.get("GEMINI_API_KEY"),
-        temperature=0.7
+        "gemini-2.0-flash", model_provider="google_genai",
+        api_key=os.environ.get("GEMINI_API_KEY"), temperature=0.7
     )
 
-# Create a prompt template that requests a JSON output
+# --- UPDATED PROMPT TEMPLATE WITH RICH CONTEXT ---
 prompt_template = ChatPromptTemplate.from_template(
     """
-    You are a fitness and nutrition expert. Generate a personalized {plan_type} plan for the following user.
+    You are a world-class fitness and nutrition expert AI. Generate a highly personalized {plan_type} plan 
+    based on the detailed user profile provided below.
 
-    User Details:
+    **User Profile:**
     - Name: {name}
     - Age: {age}
+    - Gender: {gender}
     - Height: {height} cm
     - Weight: {weight} kg
-    - Goal: {goal}
-    - Time Period: {time_period}
-
-    **CRITICAL: Your response must be ONLY valid JSON. No explanations, no markdown, no additional text.**
+    - Profession: {profession}
     
-    Return a JSON object with this exact structure:
+    **Goals & Experience:**
+    - Primary Goal: {primary_goal}
+    - Goal Deadline: {goal_deadline}
+    - Desired Workout Duration: {workout_time_minutes} minutes
+    - Preferred Workout Time: {preferred_workout_time}
+    - Experience Level: {workout_experience}
+
+    **Health & Lifestyle:**
+    - Known Medical Conditions: {medical_conditions}
+    - Past/Current Injuries: {injuries}
+    - Daily Energy Level (1-10): {energy_level}
+    - Sleep Quality (1-10): {sleep_quality}
+    - Smoking Habit: {smoking_habit}
+    - Alcohol Consumption: {alcohol_consumption}
+
+    **Dietary Preferences:**
+    - Diet Type: {diet_type}
+    - Preferred Meals Per Day: {meals_per_day}
+    - Favorite Foods: {favorite_foods}
+
+    **CRITICAL INSTRUCTIONS:**
+    1. Your entire response MUST be a single, valid JSON object. Do not include any text, notes, or markdown before or after the JSON.
+    2. The plan must be tailored to the user's goal, experience level, and health conditions.
+    3. For workout plans, include specific exercises, sets, and reps. Consider the user's injuries.
+    4. For diet plans, suggest meals that align with their diet type, meal frequency, and favorite foods.
+    5. The plan should be comprehensive enough to help the user reach their goal by the deadline.
+
+    **JSON Output Structure:**
     {{
-      "title": "string - brief motivating title",
+      "title": "string - A brief, motivating title for the plan.",
       "daily_tasks": [
         {{
           "day": number,
-          "theme": "string - theme for the day",
-          "tasks": ["string1", "string2", "string3"]
+          "theme": "string - A theme for the day (e.g., 'Upper Body Strength', 'High-Protein Meals').",
+          "tasks": ["string - A specific task for the day.", "string - Another specific task."]
         }}
       ]
     }}
-
-    Generate a {plan_type} plan with appropriate daily tasks. For workout plans, include exercises. For diet plans, include meals.
+    
+    Generate the {plan_type} plan now.
     
     JSON Response:
     """
 )
 
-# Create output parsers
-pydantic_parser = PydanticOutputParser(pydantic_object=Plan)
-
 # Create an output parser to get the JSON response
 output_parser = JsonOutputParser()
 
-# Chain the components together using LangChain Expression Language (LCEL)
+# Chain the components together
 plan_chain = prompt_template | llm | output_parser
 
 async def generate_plan_with_agent(user: dict, plan_type: str) -> Dict:
     """
-    Generates a fitness or diet plan using an async LangChain agent.
-    Returns a dictionary parsed from the JSON output.
+    Generates a fitness or diet plan using the AI agent with a detailed user profile.
     """
+    # Helper to format lists for better readability in the prompt
+    def format_list(items):
+        return ", ".join(items) if items else "None"
+
+    # Prepare inputs from the user dictionary, providing defaults for safety
     inputs = {
         "plan_type": plan_type,
         "name": user.get("name"),
         "age": user.get("age"),
+        "gender": user.get("gender"),
         "height": user.get("height"),
         "weight": user.get("weight"),
-        "goal": user.get("goal"),
-        "time_period": user.get("time_period"),
+        "profession": user.get("profession"),
+        "primary_goal": user.get("primary_goal"),
+        "goal_deadline": user.get("goal_deadline"),
+        # REMOVED: "time_period" is no longer a valid field.
+        "workout_time_minutes": user.get("workout_time_minutes"),
+        "preferred_workout_time": user.get("preferred_workout_time"),
+        "workout_experience": user.get("workout_experience"),
+        "medical_conditions": format_list(user.get("medical_conditions")),
+        "injuries": format_list(user.get("injuries")),
+        "energy_level": user.get("energy_level"),
+        "sleep_quality": user.get("sleep_quality"),
+        "diet_type": user.get("diet_type"),
+        "meals_per_day": user.get("meals_per_day"),
+        "smoking_habit": user.get("smoking_habit"),
+        "alcohol_consumption": user.get("alcohol_consumption"),
+        "favorite_foods": format_list(user.get("favorite_foods")),
     }
     
-    print(f"Generating {plan_type} plan for user: {inputs}")
-    # Use ainvoke for asynchronous execution, which won't block the server
-    # The JsonOutputParser will automatically parse the string response into a dictionary
+    print(f"Generating {plan_type} plan for user with details: {inputs}")
     result = await plan_chain.ainvoke(inputs)
-    # try:
-    #     print("Hello World")
-    #     chain_raw = prompt_template | llm
-    #     raw_result = await chain_raw.ainvoke(inputs)
-
-    #     print(f"Raw result from chain: {raw_result}")
-        
-    #     # Extract JSON from the response if it's wrapped in text
-    #     text_response = str(raw_result.content if hasattr(raw_result, 'content') else raw_result)
-        
-    #     # Try to find JSON in the response
-    #     json_start = text_response.find('{')
-    #     json_end = text_response.rfind('}') + 1
-        
-    #     if json_start != -1 and json_end > json_start:
-    #         json_str = text_response[json_start:json_end]
-    #         result = json.loads(json_str)
-    #         return result
-    #     else:
-    #         raise ValueError("No JSON found in response")
-            
-    # except Exception as e:
-    #     print(f"Manual parsing failed: {e}")
     return result

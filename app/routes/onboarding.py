@@ -11,7 +11,7 @@ USER_COLLECTION = "users"
     "/user", 
     response_model=User,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new user"
+    summary="Create a new user with detailed profile"
 )
 async def create_user(
     user: User, 
@@ -20,12 +20,13 @@ async def create_user(
     """
     Create a new user profile with their fitness details.
     """
-    # model_dump converts the Pydantic model to a dictionary suitable for MongoDB
+    # Pydantic now ensures `goal_deadline` is a datetime object.
+    # We can dump the model directly to a dict.
+    print("Hello")
     user_dict = user.model_dump(by_alias=True, exclude=["id"])
     
     result = await db[USER_COLLECTION].insert_one(user_dict)
     
-    # Retrieve the created user from the DB to ensure it was saved correctly
     created_user = await db[USER_COLLECTION].find_one({"_id": result.inserted_id})
     
     if created_user is None:
@@ -34,5 +35,4 @@ async def create_user(
             detail="Failed to create the user."
         )
 
-    # FastAPI will automatically serialize this dictionary into the `User` response model
     return created_user

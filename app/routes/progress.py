@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from app.agents.progress_agent import analyze_diet_progress
 import json
 
+
 router = APIRouter(
     prefix="/progress",
     tags=["Progress Tracking"]
