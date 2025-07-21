@@ -1,0 +1,78 @@
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from typing import List
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize the language model with Google Gemini.
+# Using ChatGoogleGenerativeAI directly is more explicit and less prone to config errors.
+# The 'google_api_key' parameter is used, which is specific to this provider.
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    google_api_key=os.environ.get("GEMINI_API_KEY"),
+    temperature=0.2
+)
+
+# This prompt is engineered to take a list of completed diet tasks (food items)
+# and return a structured JSON object containing a nutritional summary.
+prompt_template = ChatPromptTemplate.from_template(
+    """
+    You are a nutrition analysis expert. Based on the following list of completed diet tasks 
+    (food items) for a user, calculate the estimated total calories, protein, and carbohydrates.
+
+    IMPORTANT INSTRUCTIONS:
+    - Your response MUST be a single, valid JSON object.
+    - Do not include any text, notes, or explanations outside of the JSON structure.
+    - If the list of tasks is empty, return a JSON object with all values set to zero.
+    - Base your estimations on standard portion sizes if not specified.
+
+    Completed Diet Tasks:
+    {tasks_list}
+
+    JSON Structure to follow:
+    {{
+      "summary": {{
+        "total_calories": <integer>,
+        "total_protein_g": <integer>,
+        "total_carbs_g": <integer>
+      }}
+    }}
+
+    Now, generate the JSON for the provided list of tasks.
+    """
+)
+
+# Chain the components together.
+# To ensure the model returns valid JSON, we bind it with a generation config
+# that sets the response mime type to application/json. This is a robust way
+# to get structured data from Gemini models.
+progress_chain = (
+    prompt_template 
+    | llm.bind(generation_config={"response_mime_type": "application/json"}) 
+    | StrOutputParser()
+)
+
+async def analyze_diet_progress(tasks: List[str]) -> str:
+    """
+    Analyzes a list of completed diet tasks using an AI agent to estimate nutritional info.
+    
+    Args:
+        tasks: A list of strings, where each string is a completed diet task (e.g., "Scrambled eggs with spinach").
+    
+    Returns:
+        A string containing the JSON response from the AI agent.
+    """
+    # If there are no tasks, return a default zeroed JSON to avoid calling the API.
+    if not tasks:
+        return '{ "summary": { "total_calories": 0, "total_protein_g": 0, "total_carbs_g": 0 } }'
+
+    # Format the list of tasks into a single string for the prompt
+    formatted_tasks = "\n- ".join(tasks)
+    
+    # Asynchronously invoke the chain with the formatted list
+    result = await progress_chain.ainvoke({"tasks_list": formatted_tasks})
+    return result
