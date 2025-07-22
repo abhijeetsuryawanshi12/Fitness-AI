@@ -102,7 +102,7 @@ class UserUpdate(BaseModel):
 class Plan(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
     user_id: str
-    type: Literal["workout", "diet"]
+    type: Literal["workout", "diet", "workout and diet"]
     content: Dict
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
@@ -121,7 +121,8 @@ class Task(BaseModel):
     user_id: str
     plan_id: str
     task_date: datetime
-    description: str
+    name: str = Field(..., description="The name/title of the task, e.g., 'Bench Press' or 'Breakfast'.")
+    details: Dict[str, Any] = Field(..., description="A dictionary containing detailed information about the task, such as exercises (sets, reps) or meal nutrition.")
     type: Literal["workout", "diet"]
     completed: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -130,9 +131,13 @@ class Task(BaseModel):
         populate_by_name=True,
         arbitrary_types_allowed=True,
         json_schema_extra={"example": {
-            "user_id": "60d5f3f7e6c4b4a3e8e1f4b1", "plan_id": "60d5f3f7e6c4b4a3e8e1f4b2",
-            "task_date": "2025-07-15T10:00:00Z", "description": "Morning Run: 30 minutes",
-            "type": "workout", "completed": False
+            "user_id": "60d5f3f7e6c4b4a3e8e1f4b1", 
+            "plan_id": "60d5f3f7e6c4b4a3e8e1f4b2",
+            "task_date": "2025-07-15T10:00:00Z", 
+            "name": "Bench Press",
+            "details": {"sets": 3, "reps": 10, "weights": [50, 55, 60], "instructions": "Lower the bar to your chest..."},
+            "type": "workout", 
+            "completed": False
         }}
     )
 

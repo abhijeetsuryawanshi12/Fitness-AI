@@ -1,4 +1,3 @@
-# app/routes/chat.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
@@ -37,7 +36,8 @@ def format_tasks_context(tasks: list) -> str:
     task_strings = []
     for task in tasks:
         status = "Completed" if task.get("completed") else "Pending"
-        task_strings.append(f"- {task['description']} (Status: {status})")
+        # UPDATED: Use the new 'name' field instead of 'description'
+        task_strings.append(f"- {task['name']} (Status: {status})")
         
     return "Today's Tasks:\n" + "\n".join(task_strings)
 

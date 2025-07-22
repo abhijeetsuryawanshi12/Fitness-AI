@@ -7,7 +7,7 @@ from datetime import datetime, timezone, date
 
 
 # --- CONFIGURATION ---
-BACKEND_URL = "http://127.0.0.1:5000"
+BACKEND_URL = "http://127.0.0.1:8000"
 st.set_page_config(layout="wide", page_title="FitnessAI Companion")
 st.title("FitnessAI Companion")
 
@@ -85,12 +85,9 @@ def onboarding_page():
     st.header("Welcome to FitnessAI! Let's build your profile. 🚀")
     st.write("Provide as much detail as possible for the best personalization.")
 
-    # --- NEW HELPER FUNCTION TO PROCESS TEXT AREAS ---
     def process_text_area(text_input: str) -> list[str]:
-        """Cleans up comma-separated text input into a list of strings."""
         if not text_input or text_input.strip().lower() == 'none':
             return []
-        # Split by comma, strip whitespace from each item, and remove any empty items
         return [item.strip() for item in text_input.split(',') if item.strip()]
 
     with st.form("onboarding_form"):
@@ -139,17 +136,12 @@ def onboarding_page():
 
             user_data = {
                 "name": name, "age": age, "gender": gender, "height": height, "weight": weight, "profession": profession,
-                "primary_goal": primary_goal, 
-                "goal_deadline": goal_deadline_datetime.isoformat(),
-                "workout_time_minutes": workout_time_minutes,
-                "preferred_workout_time": preferred_workout_time, "workout_experience": workout_experience,
-                # FIXED: Use the new helper function for robust processing
-                "medical_conditions": process_text_area(medical_conditions),
-                "injuries": process_text_area(injuries),
-                "energy_level": energy_level, "sleep_quality": sleep_quality, "diet_type": diet_type,
-                "meals_per_day": meals_per_day,
-                "smoking_habit": smoking_habit, "alcohol_consumption": alcohol_consumption,
-                "favorite_foods": process_text_area(favorite_foods),
+                "primary_goal": primary_goal, "goal_deadline": goal_deadline_datetime.isoformat(),
+                "workout_time_minutes": workout_time_minutes, "preferred_workout_time": preferred_workout_time, 
+                "workout_experience": workout_experience, "medical_conditions": process_text_area(medical_conditions),
+                "injuries": process_text_area(injuries), "energy_level": energy_level, "sleep_quality": sleep_quality, 
+                "diet_type": diet_type, "meals_per_day": meals_per_day, "smoking_habit": smoking_habit, 
+                "alcohol_consumption": alcohol_consumption, "favorite_foods": process_text_area(favorite_foods),
             }
             with st.spinner("Creating your profile..."):
                 user = create_user(user_data)
@@ -160,7 +152,6 @@ def onboarding_page():
                     st.rerun()
 
 def profile_page():
-    # This function remains the same as the previous version
     st.header("Profile & Settings")
     profile_data = get_user_profile(st.session_state.user_id)
     if not profile_data:
@@ -205,9 +196,48 @@ def profile_page():
         cols[2].metric("Goal Deadline", deadline_dt.strftime('%b %d, %Y'))
     st.text_area("Primary Goal", profile_data.get('primary_goal'), height=100, disabled=True)
 
+# --- NEW: Helper function to display a task ---
+def display_task(task):
+    """Displays a single task with an expander for its details."""
+    st.checkbox(
+        task['name'], 
+        value=task['completed'], 
+        key=f"task_{task['_id']}", 
+        on_change=toggle_task_completion, 
+        args=(task['_id'],)
+    )
 
+    with st.expander("Show/Hide Details"):
+        details = task.get('details', {})
+        if not details:
+            st.write("No details available for this task.")
+            return
+
+        if task['type'] == 'workout':
+            st.markdown(f"**Instructions:** {details.get('instructions', 'N/A')}")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Sets", details.get('sets', 'N/A'))
+            c2.metric("Reps", details.get('reps', 'N/A'))
+            weights = ", ".join(map(str, details.get('weights', []))) or "N/A"
+            c3.metric("Weights (kg)", weights)
+
+        elif task['type'] == 'diet':
+            nutrition = details.get('nutrition_facts', {})
+            if not nutrition:
+                st.write("No nutritional information available.")
+            else:
+                st.markdown("##### Key Nutrition Facts")
+                cols = st.columns(4)
+                cols[0].metric("Calories", f"{nutrition.get('calories', 0)} kcal")
+                cols[1].metric("Protein", f"{nutrition.get('protein', 0)}g")
+                cols[2].metric("Carbs", f"{nutrition.get('carbs', 0)}g")
+                cols[3].metric("Fat", f"{nutrition.get('total_fat', 0)}g")
+                
+                with st.popover("See Full Nutrition Data"):
+                    st.json(nutrition)
+
+# --- UPDATED: daily_tasks_page to use the new display function ---
 def daily_tasks_page():
-    # This function remains the same
     st.header(f"Today's Plan - {datetime.now(timezone.utc).strftime('%A, %B %d')}")
     tasks = get_daily_tasks(st.session_state.user_id)
     if tasks is None:
@@ -217,31 +247,28 @@ def daily_tasks_page():
         st.info("You have no tasks scheduled for today. Generate a plan to get started!")
         return
 
-    workout_tasks = [t for t in tasks if t['type'] == 'workout']
-    diet_tasks = [t for t in tasks if t['type'] == 'diet']
+    workout_tasks = sorted([t for t in tasks if t['type'] == 'workout'], key=lambda x: x['created_at'])
+    diet_tasks = sorted([t for t in tasks if t['type'] == 'diet'], key=lambda x: x['created_at'])
+    
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("🏋️ Workout")
-        if not workout_tasks: st.success("No workout scheduled.")
+        if not workout_tasks: 
+            st.success("No workout scheduled.")
         else:
             for task in workout_tasks:
-                st.checkbox(task['description'], value=task['completed'], key=f"task_{task['_id']}", on_change=toggle_task_completion, args=(task['_id'],))
+                display_task(task)
     with c2:
         st.subheader("🥗 Diet")
-        if not diet_tasks: st.success("No diet tasks scheduled.")
+        if not diet_tasks: 
+            st.success("No diet tasks scheduled.")
         else:
             for task in diet_tasks:
-                st.checkbox(task['description'], value=task['completed'], key=f"task_{task['_id']}", on_change=toggle_task_completion, args=(task['_id'],))
+                display_task(task)
 
 def dashboard_page():
-    """Displays the dynamic progress dashboard."""
     st.header("Your Nutritional Progress")
-
-    period = st.selectbox(
-        "Select a time period to view:",
-        ("Daily", "Weekly", "Monthly"),
-        key="progress_period"
-    ).lower()
+    period = st.selectbox("Select a time period to view:", ("Daily", "Weekly", "Monthly"), key="progress_period").lower()
 
     with st.spinner(f"Analyzing your {period} progress..."):
         progress_data = get_progress_data(st.session_state.user_id, period)
@@ -251,84 +278,56 @@ def dashboard_page():
         return
 
     st.markdown('<div class="dark-container">', unsafe_allow_html=True)
-    
     summary = progress_data.get("summary", {})
     chart_data = progress_data.get("chart_data", [])
 
     st.subheader(f"Total Intake ({period.capitalize()})")
     col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>Total Calories</h3>
-            <p>{summary.get('total_calories', 0)}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>Total Protein (g)</h3>
-            <p>{summary.get('total_protein_g', 0)}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <h3>Total Carbs (g)</h3>
-            <p>{summary.get('total_carbs_g', 0)}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
+    with col1: st.markdown(f'<div class="metric-card"><h3>Total Calories</h3><p>{summary.get("total_calories", 0)}</p></div>', unsafe_allow_html=True)
+    with col2: st.markdown(f'<div class="metric-card"><h3>Total Protein (g)</h3><p>{summary.get("total_protein_g", 0)}</p></div>', unsafe_allow_html=True)
+    with col3: st.markdown(f'<div class="metric-card"><h3>Total Carbs (g)</h3><p>{summary.get("total_carbs_g", 0)}</p></div>', unsafe_allow_html=True)
+    
     st.markdown("<br>", unsafe_allow_html=True)
-
     st.subheader(f"Calorie Intake by Day ({period.capitalize()})")
     if not chart_data:
         st.info(f"No completed diet tasks with calorie data for this period.")
     else:
         df = pd.DataFrame(chart_data)
         df['time_label'] = pd.to_datetime(df['time_label']).dt.strftime('%b %d')
-
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=df['time_label'],
-            y=df['calories'],
-            name='Calories',
-            marker_color='#1E90FF'
-        ))
-
-        fig.update_layout(
-            plot_bgcolor='#1F2937',
-            paper_bgcolor='#1F2937',
-            xaxis=dict(title='Date', color='white', gridcolor='#374151'),
-            yaxis=dict(title='Calories', color='white', gridcolor='#374151'),
-            legend=dict(font=dict(color='white')),
-        )
+        fig = go.Figure(go.Bar(x=df['time_label'], y=df['calories'], name='Calories', marker_color='#1E90FF'))
+        fig.update_layout(plot_bgcolor='#1F2937', paper_bgcolor='#1F2937', xaxis=dict(color='white', gridcolor='#374151'), yaxis=dict(color='white', gridcolor='#374151'))
         st.plotly_chart(fig, use_container_width=True)
-
     st.markdown('</div>', unsafe_allow_html=True)
 
+# --- UPDATED: main_app_page with new plan type and display logic ---
 def main_app_page():
-    # This function remains the same
     st.sidebar.header(f"Welcome, {st.session_state.user_name}!")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🗓️ Daily Tasks", "✍️ Plan Generation", "👤 Profile & Settings", "📊 Dashboard", "🤖 Chatbot"])
+    tabs = st.tabs(["🗓️ Daily Tasks", "✍️ Plan Generation", "👤 Profile & Settings", "📊 Dashboard", "🤖 Chatbot"])
 
-    with tab1: daily_tasks_page()
-    with tab2:
+    with tabs[0]: daily_tasks_page()
+    with tabs[1]:
         st.header("Generate a New Plan")
         st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab, starting from today.")
-        plan_type = st.radio("Select plan type:", ("workout", "diet"), horizontal=True, key="plan_gen_radio")
         
-        if st.button("Generate Plan"):
-            with st.spinner(f"Generating your personalized {plan_type} plan..."):
+        # ADDED "workout and diet" option
+        plan_type = st.radio(
+            "Select plan type:", 
+            ("workout", "diet", "workout and diet"), 
+            horizontal=True, 
+            key="plan_gen_radio"
+        )
+        
+        if st.button(f"Generate {plan_type.replace('and', '&')} Plan"):
+            with st.spinner(f"Generating your personalized {plan_type} plan... This may take a moment."):
                 plan = generate_plan(st.session_state.user_id, plan_type)
                 if plan and "content" in plan:
                     st.session_state.last_generated_plan = plan
-                    st.cache_data.clear()
+                    st.cache_data.clear() # Clear cache to get new tasks
                     st.success(f"Successfully generated new {plan_type} plan!")
                     st.rerun()
                 else:
-                    st.error("Could not generate the plan. Please try again.")
+                    st.error("Could not generate the plan. The AI agent might be busy. Please try again.")
 
         if st.session_state.get("last_generated_plan"):
             plan_data = st.session_state.last_generated_plan
@@ -337,40 +336,44 @@ def main_app_page():
             st.subheader("Most Recently Generated Plan")
             st.markdown(f"### {plan_content.get('title', 'Generated Plan')}")
             
-            daily_schedule = plan_content.get("daily_tasks", [])
+            # UPDATED display logic for the new plan structure
+            daily_schedule = plan_content.get("daily_plan", [])
             if not daily_schedule:
                 st.warning("The generated plan did not contain a schedule.")
             else:
                 for day_plan in daily_schedule:
                     with st.expander(f"**Day {day_plan.get('day')}: {day_plan.get('theme')}**"):
-                        for task_desc in day_plan.get("tasks", []):
-                            st.write(f"- {task_desc}")
-    with tab3: profile_page()
-    with tab4: dashboard_page()
-    with tab5:
+                        if day_plan.get("exercises"):
+                            st.markdown("##### 🏋️ Exercises")
+                            for ex in day_plan.get("exercises", []):
+                                st.markdown(f"**{ex.get('name')}**: {ex.get('sets')} sets of {ex.get('reps')} reps")
+                        
+                        if day_plan.get("meals"):
+                            st.markdown("##### 🥗 Meals")
+                            for meal in day_plan.get("meals", []):
+                                st.markdown(f"**{meal.get('meal_name')}**")
+    with tabs[2]: profile_page()
+    with tabs[3]: dashboard_page()
+    with tabs[4]:
         st.header("Chat with your AI Assistant")
-        if "chat_messages" not in st.session_state:
-            st.session_state.chat_messages = []
+        if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
         
         for msg in st.session_state.chat_messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        if prompt := st.chat_input("Ask me anything about fitness or nutrition..."):
+        if prompt := st.chat_input("Ask me anything..."):
             st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            with st.chat_message("user"): st.markdown(prompt)
             
             with st.spinner("Thinking..."):
                 response = post_chat_message(st.session_state.user_id, prompt)
                 if response and "response" in response:
                     assistant_response = response["response"]
                     st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
-                    with st.chat_message("assistant"):
-                        st.markdown(assistant_response)
+                    with st.chat_message("assistant"): st.markdown(assistant_response)
                 else:
                     st.error("The assistant is currently unavailable.")
-
 
 # --- SESSION STATE INITIALIZATION & ROUTER ---
 if 'user_id' not in st.session_state: st.session_state.user_id = None
