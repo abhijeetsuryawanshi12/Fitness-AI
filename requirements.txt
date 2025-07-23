@@ -11,3 +11,6 @@ langchain-groq
 langchain[google-genai]
 python_dotenv
 logging
+langchain-core 
+langchain-google-genai
+python-multipart

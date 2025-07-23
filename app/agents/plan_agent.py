@@ -71,7 +71,7 @@ try:
     )
 except:
     llm = init_chat_model(
-        "gemini-2.0-pro", model_provider="google_genai",
+        "gemini-2.0-flash", model_provider="google_genai",
         api_key=os.environ.get("GEMINI_API_KEY"), temperature=0.7
     )
 

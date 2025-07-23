@@ -34,10 +34,15 @@ def api_request(method, endpoint, **kwargs):
     """Helper function to make API requests."""
     url = f"{BACKEND_URL}{endpoint}"
     try:
-        if 'json' in kwargs and kwargs['json'] is not None:
+        # If 'json' is present, serialize it and set headers for a JSON request.
+        if 'json' in kwargs and 'json' in kwargs:
             kwargs['data'] = json.dumps(kwargs.pop('json'), default=str)
-            kwargs['headers'] = {'Content-Type': 'application/json'}
-
+            if 'headers' not in kwargs:
+                kwargs['headers'] = {}
+            kwargs['headers']['Content-Type'] = 'application/json'
+        
+        # requests library handles multipart encoding automatically if 'files' kwarg is present.
+        # 'data' can be used for other form fields in a multipart request.
         response = requests.request(method, url, **kwargs)
         response.raise_for_status()
         if response.status_code == 204: return True
@@ -79,6 +84,16 @@ def update_user_profile(user_id, update_data):
         st.cache_data.clear()
         st.success("Profile updated successfully!")
     return response
+
+def analyze_food(image_file=None, image_url=None):
+    """Sends image data to the backend for analysis."""
+    if image_file:
+        files = {'image_file': (image_file.name, image_file, image_file.type)}
+        return api_request("post", "/food/analyze", files=files)
+    elif image_url:
+        data = {'image_url': image_url}
+        return api_request("post", "/food/analyze", data=data)
+    return None
 
 # --- UI PAGES ---
 def onboarding_page():
@@ -196,7 +211,6 @@ def profile_page():
         cols[2].metric("Goal Deadline", deadline_dt.strftime('%b %d, %Y'))
     st.text_area("Primary Goal", profile_data.get('primary_goal'), height=100, disabled=True)
 
-# --- NEW: Helper function to display a task ---
 def display_task(task):
     """Displays a single task with an expander for its details."""
     st.checkbox(
@@ -236,7 +250,6 @@ def display_task(task):
                 with st.popover("See Full Nutrition Data"):
                     st.json(nutrition)
 
-# --- UPDATED: daily_tasks_page to use the new display function ---
 def daily_tasks_page():
     st.header(f"Today's Plan - {datetime.now(timezone.utc).strftime('%A, %B %d')}")
     tasks = get_daily_tasks(st.session_state.user_id)
@@ -299,18 +312,77 @@ def dashboard_page():
         st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- UPDATED: main_app_page with new plan type and display logic ---
+# --- UPDATED: Food Lens Page with st.radio for camera control ---
+def food_lens_page():
+    st.header("📸 Food Lens")
+    st.write("Get a nutritional analysis of your meal by providing an image.")
+    st.info("The AI analysis is an estimation. For medical advice, please consult a professional.")
+
+    if "food_analysis_result" not in st.session_state:
+        st.session_state.food_analysis_result = None
+
+    def handle_analysis(image_file=None, image_url=None):
+        with st.spinner("Analyzing your food... This might take a moment."):
+            st.session_state.food_analysis_result = None # Clear previous result
+            response = analyze_food(image_file=image_file, image_url=image_url)
+            if response and "analysis" in response:
+                st.session_state.food_analysis_result = response["analysis"]
+            else:
+                st.error("Failed to get analysis. The AI might be busy or the image could not be processed. Please try again.")
+
+    # Use radio buttons instead of tabs. This ensures only one input widget is rendered at a time,
+    # which correctly controls the camera's on/off state.
+    input_method = st.radio(
+        "Choose your image source:",
+        ["📤 Upload Image", "📷 Take Photo", "🔗 From URL"],
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+
+    # --- Conditional Rendering based on selected method ---
+    if input_method == "📤 Upload Image":
+        uploaded_file = st.file_uploader("Choose an image of your meal...", type=["jpg", "jpeg", "png"], key="file_uploader")
+        if uploaded_file is not None:
+            st.image(uploaded_file, caption="Your uploaded image.", width=300)
+            if st.button("Analyze Uploaded Image", key="analyze_upload"):
+                handle_analysis(image_file=uploaded_file)
+    
+    elif input_method == "📷 Take Photo":
+        # The camera is only rendered when this block is executed. Switching away turns it off.
+        camera_photo = st.camera_input("Take a picture of your meal", key="camera_input")
+        if camera_photo is not None:
+            st.image(camera_photo, caption="Your captured photo.", width=300)
+            if st.button("Analyze Photo", key="analyze_camera"):
+                handle_analysis(image_file=camera_photo)
+
+    elif input_method == "🔗 From URL":
+        url_input = st.text_input("Enter the URL of a food image", key="url_input")
+        if st.button("Analyze from URL", key="analyze_url"):
+            if url_input and "http" in url_input:
+                try:
+                    st.image(url_input, caption="Image from URL.", width=300)
+                    handle_analysis(image_url=url_input)
+                except Exception as e:
+                    st.error(f"Could not load image from URL. Please check the link. Error: {e}")
+            else:
+                st.warning("Please enter a valid URL.")
+
+    # --- Display analysis result ---
+    if st.session_state.food_analysis_result:
+        st.markdown("---")
+        st.subheader("Analysis Result")
+        st.markdown(st.session_state.food_analysis_result)
+
 def main_app_page():
     st.sidebar.header(f"Welcome, {st.session_state.user_name}!")
     
-    tabs = st.tabs(["🗓️ Daily Tasks", "✍️ Plan Generation", "👤 Profile & Settings", "📊 Dashboard", "🤖 Chatbot"])
+    tabs = st.tabs(["🗓️ Daily Tasks", "✍️ Plan Generation", "📸 Food Lens", "📊 Dashboard", "🤖 Chatbot", "👤 Profile & Settings"])
 
     with tabs[0]: daily_tasks_page()
     with tabs[1]:
         st.header("Generate a New Plan")
         st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab, starting from today.")
         
-        # ADDED "workout and diet" option
         plan_type = st.radio(
             "Select plan type:", 
             ("workout", "diet", "workout and diet"), 
@@ -323,7 +395,7 @@ def main_app_page():
                 plan = generate_plan(st.session_state.user_id, plan_type)
                 if plan and "content" in plan:
                     st.session_state.last_generated_plan = plan
-                    st.cache_data.clear() # Clear cache to get new tasks
+                    st.cache_data.clear()
                     st.success(f"Successfully generated new {plan_type} plan!")
                     st.rerun()
                 else:
@@ -336,7 +408,6 @@ def main_app_page():
             st.subheader("Most Recently Generated Plan")
             st.markdown(f"### {plan_content.get('title', 'Generated Plan')}")
             
-            # UPDATED display logic for the new plan structure
             daily_schedule = plan_content.get("daily_plan", [])
             if not daily_schedule:
                 st.warning("The generated plan did not contain a schedule.")
@@ -352,7 +423,8 @@ def main_app_page():
                             st.markdown("##### 🥗 Meals")
                             for meal in day_plan.get("meals", []):
                                 st.markdown(f"**{meal.get('meal_name')}**")
-    with tabs[2]: profile_page()
+
+    with tabs[2]: food_lens_page()
     with tabs[3]: dashboard_page()
     with tabs[4]:
         st.header("Chat with your AI Assistant")
@@ -374,6 +446,7 @@ def main_app_page():
                     with st.chat_message("assistant"): st.markdown(assistant_response)
                 else:
                     st.error("The assistant is currently unavailable.")
+    with tabs[5]: profile_page()
 
 # --- SESSION STATE INITIALIZATION & ROUTER ---
 if 'user_id' not in st.session_state: st.session_state.user_id = None
