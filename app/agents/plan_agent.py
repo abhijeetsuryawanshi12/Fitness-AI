@@ -1,4 +1,3 @@
-
 # app/agents/plan_agent.py
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
@@ -172,6 +171,12 @@ async def generate_full_plan(user: dict, plan_type: str) -> Dict:
     def format_list(items):
         return ", ".join(items) if items else "None"
 
+    # Handle diet type logic for the prompt
+    diet_type_str = user.get("diet_type")
+    if diet_type_str == "Other":
+        other_details = user.get("diet_type_other", "Not specified")
+        diet_type_str = f"Other ({other_details})"
+
     inputs = {
         "plan_type": plan_type,
         "name": user.get("name"),
@@ -189,7 +194,7 @@ async def generate_full_plan(user: dict, plan_type: str) -> Dict:
         "injuries": format_list(user.get("injuries")),
         "energy_level": user.get("energy_level"),
         "sleep_quality": user.get("sleep_quality"),
-        "diet_type": user.get("diet_type"),
+        "diet_type": diet_type_str,
         "meals_per_day": user.get("meals_per_day"),
         "smoking_habit": user.get("smoking_habit"),
         "alcohol_consumption": user.get("alcohol_consumption"),

@@ -19,10 +19,11 @@ async def create_user(
 ):
     """
     Create a new user profile with their fitness details.
+    All fields are validated according to the User model.
     """
-    # Pydantic now ensures `goal_deadline` is a datetime object.
-    # We can dump the model directly to a dict.
-    print("Hello")
+    # Pydantic has already validated the incoming `user` object,
+    # including the custom model validator for diet_type.
+    # We can now dump the model directly to a dict for DB insertion.
     user_dict = user.model_dump(by_alias=True, exclude=["id"])
     
     result = await db[USER_COLLECTION].insert_one(user_dict)
