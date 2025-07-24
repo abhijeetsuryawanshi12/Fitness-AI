@@ -4,10 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
-from app.agents.progress_agent import analyze_diet_progress
 import json
-import asyncio
-
 
 router = APIRouter(
     prefix="/progress",
@@ -21,14 +18,14 @@ async def get_user_progress(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Calculates and returns the user's nutritional progress for a specified period.
-    This endpoint is now optimized to make fewer calls to the AI agent.
+    Calculates and returns the user's nutritional progress for a specified period
+    by directly aggregating data from completed tasks. This method is fast, accurate,
+    and does not require AI agent calls.
     """
     if not ObjectId.is_valid(user_id):
         raise HTTPException(status_code=400, detail="Invalid user ID format.")
     
     now = datetime.now(timezone.utc)
-
     print(f"Fetching progress for user {user_id} for period: {period} at {now.isoformat()}")
     
     # --- Define time range based on the period ---
@@ -54,57 +51,43 @@ async def get_user_progress(
             "chart_data": []
         }
 
-    # --- Group tasks by day for efficient analysis ---
-    tasks_by_day: Dict[str, List[str]] = {}
+    # --- Directly aggregate nutritional data from tasks ---
+    total_summary = {"total_calories": 0, "total_protein_g": 0, "total_carbs_g": 0}
+    daily_totals: Dict[str, Dict[str, float]] = {}
+
     for task in tasks_list:
         day_str = task['task_date'].strftime('%Y-%m-%d')
-        if day_str not in tasks_by_day:
-            tasks_by_day[day_str] = []
-        tasks_by_day[day_str].append(task['description'])
+        if day_str not in daily_totals:
+            daily_totals[day_str] = {"calories": 0, "protein": 0, "carbs": 0}
 
-    # --- AI Analysis for each day in parallel ---
-    # Create a list of analysis tasks to run concurrently
-    analysis_tasks = [
-        analyze_diet_progress(descriptions) for descriptions in tasks_by_day.values()
+        # Access the detailed nutritional facts stored within the task
+        nutrition_facts = task.get("details", {}).get("nutrition_facts", {})
+        
+        calories = nutrition_facts.get("calories", 0)
+        protein = nutrition_facts.get("protein", 0)
+        carbs = nutrition_facts.get("carbs", 0)
+
+        # Aggregate for the overall summary
+        total_summary["total_calories"] += calories
+        total_summary["total_protein_g"] += protein
+        total_summary["total_carbs_g"] += carbs
+        
+        # Aggregate for the daily chart data
+        daily_totals[day_str]["calories"] += calories
+    
+    # --- Prepare chart data ---
+    chart_data = [
+        {"time_label": day, "calories": totals["calories"]}
+        for day, totals in daily_totals.items()
     ]
-    
-    try:
-        # Run all daily analyses in parallel for speed
-        daily_analysis_results = await asyncio.gather(*analysis_tasks)
-    except Exception as e:
-        # A failure in any of the parallel tasks will raise an exception here.
-        raise HTTPException(status_code=500, detail=f"An error occurred during AI analysis: {e}")
-
-    # --- Aggregate results and prepare response ---
-    total_summary = {"total_calories": 0, "total_protein_g": 0, "total_carbs_g": 0}
-    chart_data = []
-    
-    day_keys = list(tasks_by_day.keys())
-
-    for i, analysis_str in enumerate(daily_analysis_results):
-        day_str = day_keys[i]
-        try:
-            day_summary = json.loads(analysis_str).get("summary", {})
-            
-            # Aggregate totals for the overall summary
-            total_summary["total_calories"] += day_summary.get("total_calories", 0)
-            total_summary["total_protein_g"] += day_summary.get("total_protein_g", 0)
-            total_summary["total_carbs_g"] += day_summary.get("total_carbs_g", 0)
-            
-            # Add data for the daily chart
-            chart_data.append({
-                "time_label": day_str,
-                "calories": day_summary.get("total_calories", 0)
-            })
-
-        except (json.JSONDecodeError, KeyError) as e:
-            # If a single day's analysis fails to parse, log it or handle it, 
-            # but don't fail the whole request. Here we'll just skip it.
-            print(f"Warning: Could not parse analysis for day {day_str}. Error: {e}")
-            chart_data.append({"time_label": day_str, "calories": 0})
     
     # Sort chart data by date
     chart_data.sort(key=lambda x: x["time_label"])
+
+    # Round the summary values for a cleaner response
+    total_summary["total_calories"] = round(total_summary["total_calories"])
+    total_summary["total_protein_g"] = round(total_summary["total_protein_g"])
+    total_summary["total_carbs_g"] = round(total_summary["total_carbs_g"])
 
     return {
         "summary": total_summary,
