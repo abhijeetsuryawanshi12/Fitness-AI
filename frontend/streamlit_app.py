@@ -26,6 +26,14 @@ def load_css():
         .metric-card h3 { font-size: 1.2rem; font-weight: normal; margin-bottom: 10px; color: #D1D5DB; }
         .stExpander { background-color: #374151 !important; border-radius: 8px !important; margin-bottom: 1rem !important; }
         .stButton>button { background-color: #1E90FF; color: white; border-radius: 8px; }
+        /* Style the file uploader button to be more subtle */
+        .stFileUploader > label {
+            display: none;
+        }
+        .stFileUploader > div > button {
+            background-color: #374151;
+            color: white;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -34,8 +42,8 @@ def api_request(method, endpoint, **kwargs):
     """Helper function to make API requests."""
     url = f"{BACKEND_URL}{endpoint}"
     try:
+        # If 'json' is passed, serialize it and set content type
         if 'json' in kwargs:
-            # Use a custom default function to handle date objects
             def json_default(o):
                 if isinstance(o, (datetime, date)):
                     return o.isoformat()
@@ -45,6 +53,8 @@ def api_request(method, endpoint, **kwargs):
             if 'headers' not in kwargs:
                 kwargs['headers'] = {}
             kwargs['headers']['Content-Type'] = 'application/json'
+
+        # If files are present, requests will handle multipart encoding.
         
         response = requests.request(method, url, **kwargs)
         response.raise_for_status()
@@ -104,6 +114,15 @@ def analyze_food(image_file=None, image_url=None):
         data = {'image_url': image_url}
         return api_request("post", "/food/analyze", data=data)
     return None
+
+def upload_document(user_id, file):
+    """Uploads a document for a user."""
+    files = {'file': (file.name, file, file.type)}
+    data = {'user_id': user_id}
+    response = api_request("post", "/documents/upload", data=data, files=files)
+    if response:
+        st.cache_data.clear()
+    return response
 
 # --- UI PAGES ---
 def onboarding_page():
@@ -238,10 +257,8 @@ def profile_page():
                     "diet_type": diet_type, "diet_type_other": diet_type_other
                 }
                 
-                # Check for actual changes before sending the request
                 changed_data = {}
                 for k, v in update_data.items():
-                    # Handle case where key might not exist in profile_data
                     if v != profile_data.get(k):
                         changed_data[k] = v
 
@@ -261,7 +278,6 @@ def profile_page():
     st.text_area("Primary Goal", profile_data.get('primary_goal'), height=100, disabled=True)
 
 def display_task(task):
-    """Displays a single task with an expander for its details."""
     st.checkbox(
         task['name'], 
         value=task['completed'], 
@@ -283,7 +299,6 @@ def display_task(task):
             c2.metric("Reps", details.get('reps', 'N/A'))
             weights = ", ".join(map(str, details.get('weights', []))) or "N/A"
             c3.metric("Weights (kg)", weights)
-
         elif task['type'] == 'diet':
             nutrition = details.get('nutrition_facts', {})
             if not nutrition:
@@ -295,7 +310,6 @@ def display_task(task):
                 cols[1].metric("Protein", f"{nutrition.get('protein', 0)}g")
                 cols[2].metric("Carbs", f"{nutrition.get('carbs', 0)}g")
                 cols[3].metric("Fat", f"{nutrition.get('total_fat', 0)}g")
-                
                 with st.popover("See Full Nutrition Data"):
                     st.json(nutrition)
 
@@ -378,22 +392,17 @@ def food_lens_page():
             else:
                 st.error("Failed to get analysis. The AI might be busy or the image could not be processed. Please try again.")
 
-    input_method = st.radio(
-        "Choose your image source:",
-        ["📤 Upload Image", "📷 Take Photo", "🔗 From URL"],
-        horizontal=True,
-        label_visibility="collapsed"
-    )
+    input_method = st.radio("Choose your image source:", ["📤 Upload Image", "📷 Take Photo", "🔗 From URL"], horizontal=True, label_visibility="collapsed")
 
     if input_method == "📤 Upload Image":
-        uploaded_file = st.file_uploader("Choose an image of your meal...", type=["jpg", "jpeg", "png"], key="file_uploader")
+        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"], key="file_uploader")
         if uploaded_file is not None:
             st.image(uploaded_file, caption="Your uploaded image.", width=300)
             if st.button("Analyze Uploaded Image", key="analyze_upload"):
                 handle_analysis(image_file=uploaded_file)
     
     elif input_method == "📷 Take Photo":
-        camera_photo = st.camera_input("Take a picture of your meal", key="camera_input")
+        camera_photo = st.camera_input("Take a picture", key="camera_input")
         if camera_photo is not None:
             st.image(camera_photo, caption="Your captured photo.", width=300)
             if st.button("Analyze Photo", key="analyze_camera"):
@@ -407,7 +416,7 @@ def food_lens_page():
                     st.image(url_input, caption="Image from URL.", width=300)
                     handle_analysis(image_url=url_input)
                 except Exception as e:
-                    st.error(f"Could not load image from URL. Please check the link. Error: {e}")
+                    st.error(f"Could not load image from URL. Error: {e}")
             else:
                 st.warning("Please enter a valid URL.")
 
@@ -419,6 +428,7 @@ def food_lens_page():
 def main_app_page():
     st.sidebar.header(f"Welcome, {st.session_state.user_name}!")
     
+    # UPDATED TABS: Removed "My Documents"
     tabs = st.tabs(["🗓️ Daily Tasks", "✍️ Plan Generation", "📸 Food Lens", "📊 Dashboard", "🤖 Chatbot", "👤 Profile & Settings"])
 
     with tabs[0]: daily_tasks_page()
@@ -426,15 +436,10 @@ def main_app_page():
         st.header("Generate a New Plan")
         st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab, starting from today.")
         
-        plan_type = st.radio(
-            "Select plan type:", 
-            ("workout", "diet", "workout and diet"), 
-            horizontal=True, 
-            key="plan_gen_radio"
-        )
+        plan_type = st.radio("Select plan type:", ("workout", "diet", "workout and diet"), horizontal=True, key="plan_gen_radio")
         
         if st.button(f"Generate {plan_type.replace('and', '&')} Plan"):
-            with st.spinner(f"Generating your personalized {plan_type} plan... This may take a moment."):
+            with st.spinner(f"Generating your personalized {plan_type} plan..."):
                 plan = generate_plan(st.session_state.user_id, plan_type)
                 if plan and "content" in plan:
                     st.session_state.last_generated_plan = plan
@@ -442,7 +447,7 @@ def main_app_page():
                     st.success(f"Successfully generated new {plan_type} plan!")
                     st.rerun()
                 else:
-                    st.error("Could not generate the plan. The AI agent might be busy. Please try again.")
+                    st.error("Could not generate the plan. Please try again.")
 
         if st.session_state.get("last_generated_plan"):
             plan_data = st.session_state.last_generated_plan
@@ -461,7 +466,6 @@ def main_app_page():
                             st.markdown("##### 🏋️ Exercises")
                             for ex in day_plan.get("exercises", []):
                                 st.markdown(f"**{ex.get('name')}**: {ex.get('sets')} sets of {ex.get('reps')} reps")
-                        
                         if day_plan.get("meals"):
                             st.markdown("##### 🥗 Meals")
                             for meal in day_plan.get("meals", []):
@@ -469,26 +473,164 @@ def main_app_page():
 
     with tabs[2]: food_lens_page()
     with tabs[3]: dashboard_page()
-    with tabs[4]:
+    with tabs[4]: # Chatbot Tab
         st.header("Chat with your AI Assistant")
-        if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
         
-        for msg in st.session_state.chat_messages:
+        # Session state validation
+        if "user_id" not in st.session_state:
+            st.error("User session not initialized. Please refresh the page.")
+            st.stop()
+        
+        # Initialize session state variables
+        if "chat_messages" not in st.session_state: 
+            st.session_state.chat_messages = []
+        if "processed_files" not in st.session_state:
+            st.session_state.processed_files = set()
+        
+        # Display existing messages (limit for performance)
+        MAX_DISPLAYED_MESSAGES = 50
+        recent_messages = st.session_state.chat_messages[-MAX_DISPLAYED_MESSAGES:]
+        
+        for msg in recent_messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-
-        if prompt := st.chat_input("Ask me anything..."):
-            st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+        
+        # --- IMPROVED INTEGRATED CHAT INPUT BAR ---
+        input_container = st.container()
+        with input_container:
+            # Layout: [Text Input, Upload Button, Send Button]
+            cols = st.columns([16, 2, 2], gap="small")
             
-            with st.spinner("Thinking..."):
-                response = post_chat_message(st.session_state.user_id, prompt)
-                if response and "response" in response:
-                    assistant_response = response["response"]
-                    st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
-                    with st.chat_message("assistant"): st.markdown(assistant_response)
+            with cols[0]:
+                # Use a form to properly handle input clearing
+                prompt = st.text_input(
+                    "Chat input",
+                    value=st.session_state.get("chat_input_value", ""),
+                    placeholder="Ask about your plan, or upload a document...",
+                    label_visibility="collapsed",
+                    key="chat_prompt"
+                )
+            
+            with cols[1]:
+                uploaded_file = st.file_uploader(
+                    "Upload a PDF",
+                    type="pdf",
+                    label_visibility="collapsed",
+                    key="chat_uploader"
+                )
+            
+            with cols[2]:
+                send_button = st.button(
+                    "➤", 
+                    key="send_button", 
+                    use_container_width=True,
+                    disabled=st.session_state.get("processing", False)
+                )
+            
+            # --- IMPROVED LOGIC TO HANDLE INPUTS ---
+            
+            # 1. Handle file upload with duplicate prevention
+            if uploaded_file is not None:
+                # Create unique file identifier
+                file_id = f"{uploaded_file.name}_{uploaded_file.size}_{hash(uploaded_file.getvalue())}"
+                
+                if file_id not in st.session_state.processed_files:
+                    st.session_state.processing = True
+                    
+                    with st.spinner(f"Processing '{uploaded_file.name}'..."):
+                        try:
+                            upload_document(st.session_state.user_id, uploaded_file)
+                            st.session_state.processed_files.add(file_id)
+                            
+                            st.session_state.chat_messages.append({
+                                "role": "assistant",
+                                "content": f"✅ Successfully processed '{uploaded_file.name}'. You can now ask me questions about it."
+                            })
+                            
+                            st.success(f"File '{uploaded_file.name}' uploaded successfully!")
+                            
+                        except Exception as e:
+                            st.error(f"Failed to process file '{uploaded_file.name}': {str(e)}")
+                            st.session_state.chat_messages.append({
+                                "role": "assistant",
+                                "content": f"❌ Failed to process '{uploaded_file.name}'. Please try again or contact support if the issue persists."
+                            })
+                        
+                        finally:
+                            st.session_state.processing = False
+                    
+                    st.rerun() # Rerun to display the confirmation and clear the uploader widget
+            
+            # 2. Handle text message sending with improved validation
+            if send_button and prompt and prompt.strip():
+                # Validate input
+                cleaned_prompt = prompt.strip()
+                if len(cleaned_prompt) > 4000:  # Reasonable limit
+                    st.error("Message too long. Please keep it under 4000 characters.")
                 else:
-                    st.error("The assistant is currently unavailable.")
+                    st.session_state.processing = True
+                    
+                    # Add user message
+                    st.session_state.chat_messages.append({
+                        "role": "user", 
+                        "content": cleaned_prompt
+                    })
+                    
+                    # Clear the input for next rerun
+                    st.session_state.chat_input_value = ""
+                    
+                    with st.spinner("Thinking..."):
+                        try:
+                            response = post_chat_message(st.session_state.user_id, cleaned_prompt)
+                            
+                            if response and "response" in response:
+                                assistant_response = response["response"]
+                                st.session_state.chat_messages.append({
+                                    "role": "assistant", 
+                                    "content": assistant_response
+                                })
+                            else:
+                                st.session_state.chat_messages.append({
+                                    "role": "assistant", 
+                                    "content": "I apologize, but I couldn't generate a response. Please try rephrasing your question or try again later."
+                                })
+                        
+                        except Exception as e:
+                            st.error(f"Failed to send message: {str(e)}")
+                            st.session_state.chat_messages.append({
+                                "role": "assistant", 
+                                "content": "❌ I'm experiencing technical difficulties. Please try again in a moment."
+                            })
+                        
+                        finally:
+                            st.session_state.processing = False
+                    
+                    st.rerun() # Rerun to display new messages and clear the input box
+            
+            elif send_button and not prompt.strip():
+                st.warning("Please enter a message before sending.")
+        
+        # Optional: Add chat controls
+        if st.session_state.chat_messages:
+            with st.expander("Chat Controls"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Clear Chat History", type="secondary"):
+                        st.session_state.chat_messages = []
+                        st.rerun()
+                with col2:
+                    if st.button("Export Chat", type="secondary"):
+                        chat_export = "\n\n".join([
+                            f"**{msg['role'].title()}**: {msg['content']}" 
+                            for msg in st.session_state.chat_messages
+                        ])
+                        st.download_button(
+                            "Download Chat History",
+                            chat_export,
+                            file_name=f"chat_history_{st.session_state.user_id}_{int(time.time())}.txt",
+                            mime="text/plain"
+                        )
+
     with tabs[5]: profile_page()
 
 # --- SESSION STATE INITIALIZATION & ROUTER ---

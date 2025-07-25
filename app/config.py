@@ -11,9 +11,11 @@ class Settings:
     """
     MONGODB_URI: str = os.getenv("MONGODB_URI")
     DB_NAME: str = os.getenv("DB_NAME", "user_fitness")
-    # OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
-    # GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
+
+    # ChromaDB settings for persisting vector store on disk
+    CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "chroma_db_store")
+    CHROMA_COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION_NAME", "fitness_documents")
 
     if not MONGODB_URI:
         raise ValueError("MONGODB_URI environment variable not set in .env file")

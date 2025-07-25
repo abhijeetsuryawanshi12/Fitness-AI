@@ -3,6 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
 from app.models import ChatRequest, ChatResponse, Task
 from app.agents.chat_agent import get_chat_response
+from app.vector_store import query_vector_store
 from bson import ObjectId
 from bson.errors import InvalidId
 from datetime import datetime, time, timezone
@@ -36,10 +37,21 @@ def format_tasks_context(tasks: list) -> str:
     task_strings = []
     for task in tasks:
         status = "Completed" if task.get("completed") else "Pending"
-        # UPDATED: Use the new 'name' field instead of 'description'
         task_strings.append(f"- {task['name']} (Status: {status})")
         
     return "Today's Tasks:\n" + "\n".join(task_strings)
+
+
+def format_document_context(docs: list) -> str:
+    """Formats the retrieved document chunks into a readable string for the AI."""
+    if not docs:
+        return "No relevant information found in the user's documents for this query."
+    
+    context_strings = []
+    for doc in docs:
+        context_strings.append(f"From document '{doc['filename']}':\n---\n{doc['content']}\n---")
+        
+    return "\n\n".join(context_strings)
 
 
 @router.post(
@@ -53,7 +65,7 @@ async def chat_with_agent(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Handles a user's message, retrieves their latest plan and today's tasks (RAG),
+    Handles a user's message, retrieves context from their plan, tasks, and uploaded documents (RAG),
     gets a response from the chat agent, and relies on the agent to manage chat history.
     """
     user_id_str = chat_request.user_id
@@ -97,16 +109,22 @@ async def chat_with_agent(
     })
     todays_tasks = await tasks_cursor.to_list(length=None)
     tasks_context = format_tasks_context(todays_tasks)
+
+    # 2c. Fetch relevant document chunks from the vector store
+    retrieved_docs = await query_vector_store(user_id_str, user_message_content)
+    document_context = format_document_context(retrieved_docs)
+    
     print(f"Plan Context: {plan_context}")
     print(f"Tasks Context: {tasks_context}")
+    print(f"Document Context: {document_context}")
 
-    # 3. Get a response from the chat agent, now with context.
-    # We pass the user_id as the session_id for history management.
+    # 3. Get a response from the chat agent, now with all context.
     agent_response_content = await get_chat_response(
         user_input=user_message_content,
         session_id=user_id_str,
         plan_context=plan_context,
-        tasks_context=tasks_context
+        tasks_context=tasks_context,
+        document_context=document_context
     )
 
     # 4. Return the agent's response

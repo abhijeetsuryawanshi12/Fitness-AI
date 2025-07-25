@@ -8,9 +8,10 @@ pydantic>=2.0
 langchain-community
 langchain-mongodb
 langchain-groq
-langchain[google-genai]
-python_dotenv
-logging
-langchain-core 
 langchain-google-genai
 python-multipart
+logging
+# Vector Store and Document Processing
+chromadb
+langchain-chroma
+pypdf

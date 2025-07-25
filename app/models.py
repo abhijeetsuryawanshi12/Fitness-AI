@@ -161,3 +161,21 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+# --- NEW DOCUMENT MODEL ---
+class Document(BaseModel):
+    id: Optional[PyObjectId] = Field(None, alias="_id")
+    user_id: str = Field(...)
+    filename: str = Field(...)
+    content: str = Field(...) # Full text content of the document
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={"example": {
+            "user_id": "60d5f3f7e6c4b4a3e8e1f4b1",
+            "filename": "my_health_report.pdf",
+            "content": "This is the full text extracted from the PDF...",
+        }}
+    )

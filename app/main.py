@@ -7,7 +7,8 @@ from app.routes.chat import router as chat_router
 from app.routes.tasks import router as tasks_router
 from app.routes.progress import router as progress_router
 from app.routes.profile import router as profile_router
-from app.routes.food import router as food_router # <-- IMPORT NEW ROUTER
+from app.routes.food import router as food_router
+from app.routes.document import router as document_router # <-- IMPORT NEW ROUTER
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -41,7 +42,8 @@ app.include_router(plan_router)
 app.include_router(chat_router)
 app.include_router(tasks_router)
 app.include_router(progress_router)
-app.include_router(food_router) # <-- INCLUDE NEW ROUTER
+app.include_router(food_router)
+app.include_router(document_router) # <-- INCLUDE NEW ROUTER
 
 @app.get("/", tags=["Root"])
 def read_root():
