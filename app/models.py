@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, ConfigDict, GetCoreSchemaHandler, model_validator
+# app/models.py
+from pydantic import BaseModel, Field, ConfigDict, GetCoreSchemaHandler, model_validator, EmailStr
 from pydantic_core import CoreSchema, core_schema
 from typing import Optional, Union, Dict, Literal, Any, List
 from datetime import datetime, timezone, date
@@ -24,35 +25,53 @@ class PyObjectId(ObjectId):
             return ObjectId(v)
         raise ValueError("Invalid ObjectId")
 
-# --- EXPANDED USER MODEL WITH VALIDATIONS ---
+# --- AUTH-RELATED MODELS ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    name: str = Field(..., min_length=2, max_length=100)
+    password: str = Field(..., min_length=8)
+
+# --- CORE USER MODEL ---
+# Updated to support authentication and progressive onboarding.
 class User(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
+    email: EmailStr = Field(...)
     name: str = Field(..., example="Jane Doe", min_length=2, max_length=100)
-    age: int = Field(..., example=28, ge=18, le=120)
-    gender: Literal["Male", "Female", "Prefer not to say", "Other"] = Field(..., example="Female")
-    height: float = Field(..., example=170, ge=50, le=250, description="Height in centimeters")
-    weight: float = Field(..., example=65, ge=20, le=500, description="Weight in kilograms")
-    profession: str = Field(..., example="Software Developer", max_length=100)
+    hashed_password: str = Field(...)
     
-    primary_goal: str = Field(..., example="Build Muscle", max_length=150)
-    goal_deadline: Literal["1 Month", "3 Months", "6 Months", "1 Year"] = Field(..., example="3 Months")
+    # Profile fields are now optional
+    age: Optional[int] = Field(None, example=28, ge=18, le=120)
+    gender: Optional[Literal["Male", "Female", "Prefer not to say", "Other"]] = Field(None, example="Female")
+    height: Optional[float] = Field(None, example=170, ge=50, le=250, description="Height in centimeters")
+    weight: Optional[float] = Field(None, example=65, ge=20, le=500, description="Weight in kilograms")
+    profession: Optional[str] = Field(None, example="Software Developer", max_length=100)
+    
+    primary_goal: Optional[str] = Field(None, example="Build Muscle", max_length=150)
+    goal_deadline: Optional[Literal["1 Month", "3 Months", "6 Months", "1 Year"]] = Field(None, example="3 Months")
 
-    workout_time_minutes: int = Field(..., example=60, ge=15, le=180, description="Workout duration in minutes")
-    preferred_workout_time: Literal["Morning", "Afternoon", "Evening"] = Field(..., example="Morning")
-    workout_experience: Literal["Beginner", "Intermediate", "Advanced"] = Field(..., example="Intermediate")
+    workout_time_minutes: Optional[int] = Field(None, example=60, ge=15, le=180, description="Workout duration in minutes")
+    preferred_workout_time: Optional[Literal["Morning", "Afternoon", "Evening"]] = Field(None, example="Morning")
+    workout_experience: Optional[Literal["Beginner", "Intermediate", "Advanced"]] = Field(None, example="Intermediate")
     
     medical_conditions: List[str] = Field(default=[], example=["Asthma", "Other: Mild pollen allergy"])
     injuries: List[str] = Field(default=[], example=["Past knee sprain"])
     
-    energy_level: int = Field(..., ge=1, le=10, example=7, description="Scale of 1-10")
-    sleep_quality: int = Field(..., ge=1, le=10, example=8, description="Scale of 1-10")
+    energy_level: Optional[int] = Field(None, ge=1, le=10, example=7, description="Scale of 1-10")
+    sleep_quality: Optional[int] = Field(None, ge=1, le=10, example=8, description="Scale of 1-10")
     
-    diet_type: Literal["Anything", "Vegetarian", "Vegan", "Pescatarian", "Keto", "Gluten-Free", "Other"] = Field(..., example="Anything")
+    diet_type: Optional[Literal["Anything", "Vegetarian", "Vegan", "Pescatarian", "Keto", "Gluten-Free", "Other"]] = Field(None, example="Anything")
     diet_type_other: Optional[str] = Field(None, example="Low-FODMAP", max_length=100)
-    meals_per_day: int = Field(..., example=3, ge=1, le=10)
+    meals_per_day: Optional[int] = Field(None, example=3, ge=1, le=10)
     
-    smoking_habit: Literal["Non-smoker", "Light smoker", "Heavy smoker"] = Field(..., example="Non-smoker")
-    alcohol_consumption: Literal["None", "Light", "Moderate", "Heavy"] = Field(..., example="Light")
+    smoking_habit: Optional[Literal["Non-smoker", "Light smoker", "Heavy smoker"]] = Field(None, example="Non-smoker")
+    alcohol_consumption: Optional[Literal["None", "Light", "Moderate", "Heavy"]] = Field(None, example="Light")
     
     favorite_foods: List[str] = Field(default=[], example=["Chicken breast", "Broccoli", "Oats"])
     
@@ -63,7 +82,6 @@ class User(BaseModel):
         if self.diet_type == "Other" and not self.diet_type_other:
             raise ValueError('If diet_type is "Other", diet_type_other must be specified.')
         if self.diet_type != "Other" and self.diet_type_other is not None:
-            # Clear the other field if a standard diet is chosen
             self.diet_type_other = None
         return self
 
@@ -72,7 +90,7 @@ class User(BaseModel):
         arbitrary_types_allowed=True,
         json_encoders={datetime: lambda v: v.isoformat(), date: lambda v: v.isoformat()},
         json_schema_extra={"example": {
-            "name": "Jane Doe", "age": 28, "gender": "Female", "height": 170, "weight": 65, "profession": "Software Developer",
+            "name": "Jane Doe", "email": "jane.doe@example.com", "age": 28, "gender": "Female", "height": 170, "weight": 65, "profession": "Software Developer",
             "primary_goal": "Build Muscle", "goal_deadline": "3 Months", "workout_time_minutes": 60,
             "preferred_workout_time": "Morning", "workout_experience": "Intermediate", "medical_conditions": ["Asthma"],
             "injuries": ["Past knee sprain"], "energy_level": 7, "sleep_quality": 8, "diet_type": "Anything", "diet_type_other": None,
@@ -80,7 +98,7 @@ class User(BaseModel):
         }}
     )
 
-# --- MODEL FOR UPDATING USER PROFILE ---
+# --- MODEL FOR UPDATING USER PROFILE (Onboarding/Settings) ---
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     age: Optional[int] = Field(None, ge=18, le=120)
@@ -155,9 +173,27 @@ class Task(BaseModel):
 class TaskUpdate(BaseModel):
     completed: bool
 
+# ChatRequest no longer needs user_id
 class ChatRequest(BaseModel):
-    user_id: str
     message: str
 
 class ChatResponse(BaseModel):
     response: str
+
+# --- NEW DOCUMENT MODEL ---
+class Document(BaseModel):
+    id: Optional[PyObjectId] = Field(None, alias="_id")
+    user_id: str = Field(...)
+    filename: str = Field(...)
+    content: str = Field(...) # Full text content of the document
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={"example": {
+            "user_id": "60d5f3f7e6c4b4a3e8e1f4b1",
+            "filename": "my_health_report.pdf",
+            "content": "This is the full text extracted from the PDF...",
+        }}
+    )

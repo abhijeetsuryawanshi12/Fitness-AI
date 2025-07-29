@@ -19,12 +19,6 @@ from langchain_core.caches import BaseCache
 # ChatOpenAI.model_rebuild()
 
 # Initialize the language model
-# llm = ChatOpenAI(api_key=settings.OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0.7)
-# llm = ChatGroq(
-#     groq_api_key=settings.GROQ_API_KEY,
-#     model_name="llama3-8b-8192"
-# )
-
 llm = init_chat_model("gemini-2.0-flash",
                       model_provider="google_genai",
                       api_key=os.environ.get("GEMINI_API_KEY"),
@@ -32,16 +26,18 @@ llm = init_chat_model("gemini-2.0-flash",
 
 # Create a new prompt template that includes context for the RAG technique.
 # This template is designed for conversation and includes a placeholder for memory,
-# the user's plan, and their daily tasks.
+# the user's plan, their daily tasks, and relevant document context.
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a friendly and knowledgeable fitness and nutrition chatbot. Your role is to assist users with their health-related questions in a conversational manner.
 
-You have been provided with the user's current fitness/diet plan and their list of tasks for today. Use this information to provide more personalized and relevant advice.
+You have been provided with several pieces of context to help you provide a personalized response: the user's current fitness/diet plan, their tasks for today, and text from documents they have uploaded.
 
 - If the user asks about their plan, refer to the 'Plan Context'.
 - If they ask about today's activities, refer to the 'Today's Tasks'.
+- If their question seems related to information that might be in their personal documents (like lab results, doctor's notes, etc.), refer to the 'Relevant Document Context'.
+- If you use information from a document, mention which document it came from (e.g., "According to your 'health_report.pdf' document...").
 - Be supportive and encouraging.
-- If you don't know the answer, say so.
+- If you don't know the answer, say so. Do not invent information.
 - Keep your answers concise and easy to understand.
 
 ---
@@ -50,6 +46,9 @@ PLAN CONTEXT:
 ---
 TODAY'S TASKS:
 {tasks_context}
+---
+RELEVANT DOCUMENT CONTEXT:
+{document_context}
 ---
 """),
     MessagesPlaceholder(variable_name="history"),
@@ -81,32 +80,33 @@ async def get_chat_response(
     user_input: str,
     session_id: str,
     plan_context: str,
-    tasks_context: str
+    tasks_context: str,
+    document_context: str
 ) -> str:
     """
     Generates a conversational response from the chatbot agent using RunnableWithMessageHistory
     with MongoDB as the message store. The history is managed automatically by the chain.
-    This version is enhanced with RAG to include plan and task context.
+    This version is enhanced with RAG to include plan, task, and document context.
 
     Args:
         user_input: The user's latest message.
         session_id: The unique identifier for the conversation session (we will use the user_id).
         plan_context: A string containing the user's current plan details.
         tasks_context: A string containing the user's tasks for the current day.
+        document_context: A string containing relevant snippets from the user's documents.
 
     Returns:
         The agent's response as a string.
     """
     # The config dictionary is required to pass the session_id to the chain.
-    # The chain will now automatically load history from and save history to MongoDB
-    # based on the provided session_id.
     config = {"configurable": {"session_id": session_id}}
 
-    # The input to the chain now includes the user's message plus the retrieved context.
+    # The input to the chain now includes the user's message plus all retrieved context.
     input_data = {
         "input": user_input,
         "plan_context": plan_context,
-        "tasks_context": tasks_context
+        "tasks_context": tasks_context,
+        "document_context": document_context
     }
 
     response = await chain_with_history.ainvoke(
