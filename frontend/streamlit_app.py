@@ -101,19 +101,19 @@ def login_user(email, password):
 def create_user(user_data):
     return api_request("post", "/onboarding/user", json=user_data)
 
-def generate_plan(user_id, plan_type):
-    return api_request("post", "/plan/generate", json={"user_id": user_id, "type": plan_type})
+def generate_plan(plan_type):
+    return api_request("post", "/plan/generate", json={"type": plan_type})
 
-def post_chat_message(user_id, message):
-    return api_request("post", "/chat/", json={"user_id": user_id, "message": message})
+def post_chat_message(message):
+    return api_request("post", "/chat/", json={"message": message})
 
 @st.cache_data(ttl=60)
-def get_daily_tasks(user_id):
-    return api_request("get", f"/tasks/user/{user_id}")
+def get_daily_tasks():
+    return api_request("get", f"/tasks/today")
 
 @st.cache_data(ttl=300)
-def get_progress_data(user_id, period):
-    return api_request("get", f"/progress/user/{user_id}?period={period}")
+def get_progress_data(period):
+    return api_request("get", f"/progress/me?period={period}")
 
 def toggle_task_completion(task_id):
     response = api_request("put", f"/tasks/{task_id}/toggle_completion")
@@ -123,9 +123,6 @@ def toggle_task_completion(task_id):
 # @st.cache_data(ttl=30)
 
 def get_user_profile():
-    """Fetches the current user's profile"""
-    print(f"DEBUG: get_user_profile called")
-    print(f"DEBUG: Current token in session: {st.session_state.token[:20] if st.session_state.token else 'None'}...")
     
     # Test if session state has the token
     if not st.session_state.token:
@@ -154,11 +151,10 @@ def analyze_food(image_file=None, image_url=None):
         return api_request("post", "/food/analyze", data=data)
     return None
 
-def upload_document(user_id, file):
+def upload_document(file):
     """Uploads a document for a user."""
     files = {'file': (file.name, file, file.type)}
-    data = {'user_id': user_id}
-    response = api_request("post", "/documents/upload", data=data, files=files)
+    response = api_request("post", "/documents/upload", files=files)
     if response:
         st.cache_data.clear()
     return response
@@ -479,7 +475,7 @@ def display_task(task):
 
 def daily_tasks_page():
     st.header(f"Today's Plan - {datetime.now(timezone.utc).strftime('%A, %B %d')}")
-    tasks = get_daily_tasks(st.session_state.user_id)
+    tasks = get_daily_tasks()
     if tasks is None:
         st.warning("Could not fetch tasks for today.")
         return
@@ -511,7 +507,7 @@ def dashboard_page():
     period = st.selectbox("Select a time period to view:", ("Daily", "Weekly", "Monthly"), key="progress_period").lower()
 
     with st.spinner(f"Analyzing your {period} progress..."):
-        progress_data = get_progress_data(st.session_state.user_id, period)
+        progress_data = get_progress_data(period)
 
     if not progress_data:
         st.warning(f"Could not fetch {period} progress data. Complete some diet tasks to see your progress.")
@@ -604,7 +600,7 @@ def main_app_page():
         
         if st.button(f"Generate {plan_type.replace('and', '&')} Plan"):
             with st.spinner(f"Generating your personalized {plan_type} plan..."):
-                plan = generate_plan(st.session_state.user_id, plan_type)
+                plan = generate_plan(plan_type)
                 if plan and "content" in plan:
                     st.session_state.last_generated_plan = plan
                     st.cache_data.clear()
