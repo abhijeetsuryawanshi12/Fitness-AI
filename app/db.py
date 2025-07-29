@@ -1,5 +1,7 @@
+# app/db.py
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.config import settings
+import pymongo # Import pymongo for index model
 
 class Database:
     client: AsyncIOMotorClient = None
@@ -8,7 +10,7 @@ class Database:
 db = Database()
 
 async def connect_to_mongo():
-    """Connects to the MongoDB database."""
+    """Connects to the MongoDB database and creates indexes."""
     print("Connecting to MongoDB...")
     db.client = AsyncIOMotorClient(settings.MONGODB_URI)
     db.db = db.client[settings.DB_NAME]
@@ -16,8 +18,18 @@ async def connect_to_mongo():
         # The ismaster command is cheap and does not require auth.
         await db.client.admin.command('ismaster')
         print("Successfully connected to MongoDB.")
+
+        # Create unique index for user emails
+        users_collection = db.db.users
+        await users_collection.create_index(
+            [("email", pymongo.ASCENDING)],
+            unique=True,
+            name="unique_email_idx"
+        )
+        print("Ensured unique email index exists for users collection.")
+
     except Exception as e:
-        print(f"Could not connect to MongoDB: {e}")
+        print(f"Could not connect to MongoDB or create indexes: {e}")
         raise
 
 async def close_mongo_connection():

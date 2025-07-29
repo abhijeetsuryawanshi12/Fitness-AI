@@ -1,5 +1,5 @@
 #Frontend-dependencies
-streamlit --upgrade
+streamlit
 requests
 pandas
 plotly

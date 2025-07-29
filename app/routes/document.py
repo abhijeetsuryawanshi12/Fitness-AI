@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Form
+# app/routes/document.py
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
-from app.models import Document
+from app.models import Document, User
 from app.vector_store import process_and_store_document
+from app.security import get_current_user
 from typing import List
-from bson import ObjectId
 import os
 import shutil
 import tempfile
@@ -17,22 +18,21 @@ DOCUMENT_COLLECTION = "documents"
     "/upload",
     response_model=Document,
     status_code=status.HTTP_201_CREATED,
-    summary="Upload and process a document"
+    summary="Upload and process a document for the current user"
 )
 async def upload_document(
-    user_id: str = Form(...),
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Uploads a PDF document, extracts its text, stores the text in MongoDB,
-    and stores its embeddings in ChromaDB for RAG.
+    Uploads a PDF document for the authenticated user, extracts its text, 
+    stores it in MongoDB, and its embeddings in ChromaDB for RAG.
     """
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid user_id format.")
-        
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF is supported.")
+
+    user_id_str = str(current_user.id)
 
     # Create a temporary file to store the upload
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
@@ -43,7 +43,7 @@ async def upload_document(
     try:
         # 1. First, create the document record in MongoDB to get an ID
         doc_mongo = Document(
-            user_id=user_id,
+            user_id=user_id_str,
             filename=file.filename,
             content="" # Will be updated after processing
         )
@@ -55,7 +55,7 @@ async def upload_document(
         # 2. Process the document and store in vector store
         full_text = process_and_store_document(
             file_path=tmp_path,
-            user_id=user_id,
+            user_id=user_id_str,
             document_id=str(document_id),
             filename=file.filename
         )
@@ -82,20 +82,18 @@ async def upload_document(
 
 
 @router.get(
-    "/user/{user_id}",
+    "/",
     response_model=List[Document],
-    summary="List all documents for a user"
+    summary="List all documents for the current user"
 )
-async def list_user_documents(
-    user_id: str,
+async def list_my_documents(
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Retrieves a list of all documents uploaded by a specific user.
+    Retrieves a list of all documents uploaded by the currently authenticated user.
     """
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid user_id format.")
-    
-    cursor = db[DOCUMENT_COLLECTION].find({"user_id": user_id}).sort("created_at", -1)
+    user_id_str = str(current_user.id)
+    cursor = db[DOCUMENT_COLLECTION].find({"user_id": user_id_str}).sort("created_at", -1)
     documents = await cursor.to_list(length=None)
     return documents

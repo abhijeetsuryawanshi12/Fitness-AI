@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import User
 from app.db import get_database
+from app.security import get_current_user
+from app.models import User
+from app.models import UserCreate
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
@@ -14,7 +17,7 @@ USER_COLLECTION = "users"
     summary="Create a new user with detailed profile"
 )
 async def create_user(
-    user: User, 
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
@@ -24,7 +27,7 @@ async def create_user(
     # Pydantic has already validated the incoming `user` object,
     # including the custom model validator for diet_type.
     # We can now dump the model directly to a dict for DB insertion.
-    user_dict = user.model_dump(by_alias=True, exclude=["id"])
+    user_dict = current_user.model_dump(by_alias=True, exclude=["id"])
     
     result = await db[USER_COLLECTION].insert_one(user_dict)
     

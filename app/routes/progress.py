@@ -1,8 +1,10 @@
+# app/routes/progress.py
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from app.db import get_database
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from bson import ObjectId
-from typing import List, Dict
+from app.models import User
+from app.security import get_current_user
+from typing import Dict
 from datetime import datetime, timedelta, timezone
 import json
 
@@ -11,22 +13,19 @@ router = APIRouter(
     tags=["Progress Tracking"]
 )
 
-@router.get("/user/{user_id}")
-async def get_user_progress(
-    user_id: str = Path(..., description="The unique ID of the user"),
+@router.get("/me")
+async def get_my_progress(
     period: str = Query("daily", enum=["daily", "weekly", "monthly"], description="The time period for the progress report."),
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Calculates and returns the user's nutritional progress for a specified period
-    by directly aggregating data from completed tasks. This method is fast, accurate,
-    and does not require AI agent calls.
+    Calculates and returns the authenticated user's nutritional progress for a specified period
+    by directly aggregating data from their completed tasks.
     """
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid user ID format.")
-    
+    user_id_str = str(current_user.id)
     now = datetime.now(timezone.utc)
-    print(f"Fetching progress for user {user_id} for period: {period} at {now.isoformat()}")
+    print(f"Fetching progress for user {user_id_str} for period: {period} at {now.isoformat()}")
     
     # --- Define time range based on the period ---
     if period == "daily":
@@ -38,7 +37,7 @@ async def get_user_progress(
 
     # --- Fetch completed diet tasks for the period ---
     tasks_cursor = db.tasks.find({
-        "user_id": user_id,
+        "user_id": user_id_str,
         "type": "diet",
         "completed": True,
         "task_date": {"$gte": start_date}

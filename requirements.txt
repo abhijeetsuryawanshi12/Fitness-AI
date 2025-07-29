@@ -1,3 +1,4 @@
+# requirements.txt
 fastapi
 uvicorn[standard]
 python-dotenv
@@ -14,3 +15,8 @@ python-multipart
 chromadb
 langchain-chroma
 pypdf
+# --- Added for Auth ---
+passlib[bcrypt]
+python-jose[cryptography]
+# passlib==5.3.1
+# bcrypt==3.2.0
