@@ -21,7 +21,7 @@ class Settings:
     # JWT settings
     # To generate a secret key, you can run this in a Python shell:
     # >>> import secrets; secrets.token_hex(32)
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "a_very_secret_key_that_should_be_in_env_file")
+    SECRET_KEY: str = os.getenv("SECRET_KEY") # No default value for production safety
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
 
@@ -29,5 +29,8 @@ class Settings:
         raise ValueError("MONGODB_URI environment variable not set in .env file")
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY environment variable not set in .env file")
+    # PRODUCTION SAFETY: Ensure a real secret key is set and not the default
+    if not SECRET_KEY or SECRET_KEY == "a_very_secret_key_that_should_be_in_env_file":
+        raise ValueError("FATAL: SECRET_KEY environment variable not set or is set to the default. Please generate a secure key.")
 
 settings = Settings()

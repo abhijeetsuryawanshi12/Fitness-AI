@@ -43,21 +43,12 @@ def api_request(method, endpoint, **kwargs):
     """Helper function to make API requests."""
     url = f"{BACKEND_URL}{endpoint}"
     try:
-        # Initialize headers if not present
         if 'headers' not in kwargs:
             kwargs['headers'] = {}
         
-        # CRITICAL: Add Authorization header if token exists
         if hasattr(st.session_state, 'token') and st.session_state.token:
             kwargs['headers']['Authorization'] = f"Bearer {st.session_state.token}"
-            print(f"DEBUG: Added Authorization header with token: {st.session_state.token[:30]}...")
-        else:
-            print("DEBUG: No token found in session state!")
         
-        print(f"DEBUG: Making {method.upper()} request to {url}")
-        print(f"DEBUG: Headers being sent: {kwargs['headers']}")
-        
-        # Handle JSON data
         if 'json' in kwargs:
             def json_default(o):
                 if isinstance(o, (datetime, date)):
@@ -67,11 +58,7 @@ def api_request(method, endpoint, **kwargs):
             kwargs['data'] = json.dumps(kwargs.pop('json'), default=json_default)
             kwargs['headers']['Content-Type'] = 'application/json'
 
-        # Make the request
         response = requests.request(method, url, **kwargs)
-        print(f"DEBUG: Response status code: {response.status_code}")
-        print(f"DEBUG: Response content: {response.text[:200]}...")
-        
         response.raise_for_status()
         
         if response.status_code == 204: 
@@ -79,17 +66,12 @@ def api_request(method, endpoint, **kwargs):
         return response.json()
         
     except requests.exceptions.RequestException as e:
-        print(f"DEBUG: Request failed - Status: {e.response.status_code if e.response else 'No response'}")
-        print(f"DEBUG: Error details: {e}")
-        
         st.error(f"API Error: {e}")
         if e.response:
             try:
                 error_details = e.response.json()
-                print(f"DEBUG: Server error response: {error_details}")
                 st.error(f"Server error: {error_details.get('detail', 'Unknown error')}")
             except json.JSONDecodeError:
-                print(f"DEBUG: Server response text: {e.response.text}")
                 st.error(f"Server response: {e.response.text}")
         return None
 
@@ -98,8 +80,6 @@ def register_user(name, email, password):
 
 def login_user(email, password):
     return api_request("post", "/auth/token", data={"username": email, "password": password})
-def create_user(user_data):
-    return api_request("post", "/onboarding/user", json=user_data)
 
 def generate_plan(plan_type):
     return api_request("post", "/plan/generate", json={"type": plan_type})
@@ -109,38 +89,40 @@ def post_chat_message(message):
 
 @st.cache_data(ttl=60)
 def get_daily_tasks():
-    return api_request("get", f"/tasks/today")
+    return api_request("get", "/tasks/today")
 
 @st.cache_data(ttl=300)
 def get_progress_data(period):
     return api_request("get", f"/progress/me?period={period}")
 
-def toggle_task_completion(task_id):
+# This function is now stateful and manages UI updates
+def toggle_task_completion_and_refresh(task_id):
     response = api_request("put", f"/tasks/{task_id}/toggle_completion")
-    if response: st.cache_data.clear()
-    return response
+    if response:
+        # Clear caches that depend on task completion
+        st.cache_data.clear()
+        # Manually refetch user profile to update streak in the UI
+        st.session_state.user_profile = get_user_profile()
+        st.toast("Task status updated!")
+    else:
+        st.error("Failed to update task.")
 
-# @st.cache_data(ttl=30)
-
+# No caching here to ensure we always get the latest profile data (like streak)
 def get_user_profile():
-    
-    # Test if session state has the token
-    if not st.session_state.token:
+    if not st.session_state.get('token'):
         return None
-        
-    result = api_request("GET", "/profile/me")
-    return result
+    return api_request("GET", "/profile/me")
 
 def update_user_profile(update_data):
-    # user_id is no longer needed
     response = api_request("put", "/profile/me", json=update_data)
     if response: 
         st.cache_data.clear()
+        # Refresh the profile in session state after update
+        st.session_state.user_profile = response
         st.success("Profile updated successfully!")
     return response
 
 def analyze_food(image_file=None, image_url=None):
-    """Sends image data to the backend for analysis."""
     if image_file:
         files = {'image_file': (image_file.name, image_file, image_file.type)}
         return api_request("post", "/food/analyze", files=files)
@@ -150,7 +132,6 @@ def analyze_food(image_file=None, image_url=None):
     return None
 
 def upload_document(file):
-    """Uploads a document for a user."""
     files = {'file': (file.name, file, file.type)}
     response = api_request("post", "/documents/upload", files=files)
     if response:
@@ -158,22 +139,12 @@ def upload_document(file):
     return response
 
 # --- UI PAGES ---
-
 def logout():
-    """Clears session state to log the user out."""
     keys_to_clear = ["token", "user_name", "user_profile", "last_generated_plan", "chat_messages"]
     for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()
-
-# --- UI PAGES ---
-if 'token' not in st.session_state:
-    st.session_state.token = None
-if 'user_profile' not in st.session_state:
-    st.session_state.user_profile = None
-if 'user_name' not in st.session_state:
-    st.session_state.user_name = None
 
 def login_page():
     st.header("Welcome to FitnessAI Companion")
@@ -215,8 +186,6 @@ def login_page():
                         response = register_user(name, email, password)
                         if response:
                             st.success(f"Account created for {response['name']}! Please log in.")
-                        # No auto-login for security, user must explicitly log in
-                        
 
 def setup_profile_page():
     st.header("Just one more step! Let's build your profile. 🚀")
@@ -300,13 +269,32 @@ def setup_profile_page():
                         st.rerun()
 
 def profile_page():
-    st.header("Profile & Settings")
+    st.header("Your Profile")
     profile_data = st.session_state.user_profile
     if not profile_data:
         st.error("Could not load your profile.")
+        if st.button("Retry loading profile"):
+            st.rerun()
         return
 
-    with st.expander("Edit Your Profile", expanded=False):
+    # --- STREAK DISPLAY ---
+    st.subheader("Your Stats")
+    streak = profile_data.get('streak', 0)
+    
+    cols = st.columns(4)
+    with cols[0]:
+        st.markdown(f'<div class="metric-card"><h3>🔥 Current Streak</h3><p>{streak}</p></div>', unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown(f'<div class="metric-card"><h3>Height</h3><p>{profile_data.get("height", 0)}</p>cm</div>', unsafe_allow_html=True)
+    with cols[2]:
+        st.markdown(f'<div class="metric-card"><h3>Weight</h3><p>{profile_data.get("weight", 0)}</p>kg</div>', unsafe_allow_html=True)
+    with cols[3]:
+        st.markdown(f'<div class="metric-card"><h3>Goal Deadline</h3><p style="font-size: 1.5rem; padding-top: 1rem;">{profile_data.get("goal_deadline", "N/A")}</p></div>', unsafe_allow_html=True)
+    
+    st.text_area("Primary Goal", profile_data.get('primary_goal'), height=100, disabled=True, key="profile_goal_display")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    with st.expander("⚙️ Edit Profile & Settings"):
         with st.form("update_profile_form"):
             deadline_options = ["1 Month", "3 Months", "6 Months", "1 Year"]
             current_deadline = profile_data.get('goal_deadline')
@@ -327,34 +315,22 @@ def profile_page():
             primary_goal = c1.text_input("Primary Fitness Goal", profile_data.get('primary_goal'), max_chars=150)
             goal_deadline = c2.selectbox("Goal Deadline", deadline_options, index=current_deadline_index)
             
-            # ... (omitting other fields for brevity, they would be here)
-
             if st.form_submit_button("Save Changes"):
-                update_data = {
-                    "name": name, "age": age, "height": height, "weight": weight, "profession": profession,
-                    "primary_goal": primary_goal, "goal_deadline": goal_deadline,
-                }
-                
+                update_data = {"name": name, "age": age, "height": height, "weight": weight, "profession": profession, "primary_goal": primary_goal, "goal_deadline": goal_deadline}
                 changed_data = {k: v for k, v in update_data.items() if v != profile_data.get(k)}
+                
                 if changed_data:
                     with st.spinner("Updating your profile..."):
                         update_user_profile(changed_data)
                 else:
                     st.toast("No changes were made.")
 
-    st.subheader("Current Profile At a Glance")
-    cols = st.columns(3)
-    cols[0].metric("Height", f"{profile_data.get('height', 0)} cm")
-    cols[1].metric("Weight", f"{profile_data.get('weight', 0)} kg")
-    cols[2].metric("Goal Deadline", profile_data.get('goal_deadline', 'N/A'))
-    st.text_area("Primary Goal", profile_data.get('primary_goal'), height=100, disabled=True)
-
 def display_task(task):
     st.checkbox(
         task['name'], 
         value=task['completed'], 
         key=f"task_{task['_id']}", 
-        on_change=toggle_task_completion, 
+        on_change=toggle_task_completion_and_refresh, 
         args=(task['_id'],)
     )
 
@@ -388,11 +364,14 @@ def display_task(task):
 def daily_tasks_page():
     st.header(f"Today's Plan - {datetime.now(timezone.utc).strftime('%A, %B %d')}")
     tasks = get_daily_tasks()
+    
     if tasks is None:
-        st.warning("Could not fetch tasks for today.")
+        st.warning("Could not fetch tasks for today. The server might be busy.")
         return
+        
     if not tasks:
-        st.info("You have no tasks scheduled for today. Generate a plan to get started!")
+        st.info("You have no tasks scheduled for today. Your weekly plan might have ended.")
+        st.warning("Go to the 'Plan Generation' tab to create a new one to continue your journey! 💪")
         return
 
     workout_tasks = sorted([t for t in tasks if t['type'] == 'workout'], key=lambda x: x['created_at'])
@@ -499,27 +478,28 @@ def food_lens_page():
 
 def main_app_page():
     st.sidebar.header(f"Welcome, {st.session_state.user_name}!")
+    st.sidebar.button("Logout", on_click=logout, use_container_width=True)
     
-    # UPDATED TABS: Removed "My Documents"
-    tabs = st.tabs(["🗓️ Daily Tasks", "✍️ Plan Generation", "📸 Food Lens", "📊 Dashboard", "🤖 Chatbot", "👤 Profile & Settings"])
+    tabs = st.tabs(["👤 Profile", "🗓️ Daily Tasks", "✍️ Plan Generation", "📊 Dashboard", "🤖 Chatbot", "📸 Food Lens"])
 
-    with tabs[0]: daily_tasks_page()
-    with tabs[1]:
+    with tabs[0]: profile_page()
+    with tabs[1]: daily_tasks_page()
+    with tabs[2]:
         st.header("Generate a New Plan")
-        st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab, starting from today.")
+        st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab for the next 7 days.")
         
         plan_type = st.radio("Select plan type:", ("workout", "diet", "workout and diet"), horizontal=True, key="plan_gen_radio")
         
         if st.button(f"Generate {plan_type.replace('and', '&')} Plan"):
-            with st.spinner(f"Generating your personalized {plan_type} plan..."):
+            with st.spinner(f"Generating your personalized {plan_type} plan... This can take up to a minute."):
                 plan = generate_plan(plan_type)
                 if plan and "content" in plan:
                     st.session_state.last_generated_plan = plan
-                    st.cache_data.clear()
+                    st.cache_data.clear() # Clear old tasks
                     st.success(f"Successfully generated new {plan_type} plan!")
                     st.rerun()
                 else:
-                    st.error("Could not generate the plan. Please try again.")
+                    st.error("Could not generate the plan. The AI agent might be busy. Please try again.")
 
         if st.session_state.get("last_generated_plan"):
             plan_data = st.session_state.last_generated_plan
@@ -542,79 +522,72 @@ def main_app_page():
                             st.markdown("##### 🥗 Meals")
                             for meal in day_plan.get("meals", []):
                                 st.markdown(f"**{meal.get('meal_name')}**")
-
-    with tabs[2]: food_lens_page()
+    
     with tabs[3]: dashboard_page()
     with tabs[4]: # Chatbot Tab
         st.header("Chat with your AI Assistant")
-        if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
+
+        # Display existing chat messages
         for msg in st.session_state.chat_messages:
-            with st.chat_message(msg["role"]): st.markdown(msg["content"])
+            # Add a safety check to prevent errors if a message is malformed
+            if msg and "role" in msg and "content" in msg:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
         
         # Chat input logic
-        if prompt := st.chat_input("Ask about your plan..."):
+        if prompt := st.chat_input("Ask about your plan or documents..."):
             st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
             with st.spinner("Thinking..."):
                 response = post_chat_message(prompt)
                 if response and "response" in response:
                     assistant_response = response["response"]
                     st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
-                    with st.chat_message("assistant"): st.markdown(assistant_response)
+                    with st.chat_message("assistant"):
+                        st.markdown(assistant_response)
         
-        # Document Upload
         with st.expander("Upload a Document for Analysis"):
-            uploaded_file = st.file_uploader("Upload a PDF", type="pdf", key="chat_uploader")
+            uploaded_file = st.file_uploader("Upload a PDF (e.g., lab report, doctor's notes)", type="pdf", key="chat_uploader")
             if uploaded_file is not None:
                 if st.button("Process Document"):
                     with st.spinner(f"Processing '{uploaded_file.name}'..."):
                         upload_document(uploaded_file)
                         st.success(f"File '{uploaded_file.name}' processed. You can now ask questions about it.")
 
-    with tabs[5]: profile_page()
+    with tabs[5]: food_lens_page()
 
 # --- MAIN APP ROUTER LOGIC ---
 def check_profile_completeness(user_data):
-    # A simple check. If 'age' is missing, we assume the profile is incomplete.
     return user_data and user_data.get("age") is not None
 
-# Initialize session state
+# Correctly initialize session state to prevent errors
 if 'token' not in st.session_state: st.session_state.token = None
 if 'user_name' not in st.session_state: st.session_state.user_name = None
 if 'user_profile' not in st.session_state: st.session_state.user_profile = None
 if 'last_generated_plan' not in st.session_state: st.session_state.last_generated_plan = None
+if 'chat_messages' not in st.session_state: st.session_state.chat_messages = [] # FIX: Initialize as an empty list
 
 load_css()
 
-
 if st.session_state.token is None:
     login_page()
-    st.stop()  # Stop execution here
 else:
-    
-    # If we have a token but no user profile, fetch it
     if st.session_state.user_profile is None:
         with st.spinner("Loading your profile..."):
             profile = get_user_profile()
-            
             if profile:
                 st.session_state.user_profile = profile
                 st.session_state.user_name = profile.get("name")
-            else:
-                # Token is invalid, clear it
-                st.session_state.token = None
-                st.session_state.user_profile = None
-                st.session_state.user_name = None
-                st.error("Session expired. Please login again.")
                 st.rerun()
-
-    # Now check if we have a valid profile
-    if st.session_state.user_profile:
-        if check_profile_completeness(st.session_state.user_profile):
-            main_app_page()
-        else:
-            setup_profile_page()
+            else:
+                st.session_state.token = None
+                st.error("Session expired or invalid. Please login again.")
+                time.sleep(2)
+                st.rerun()
+    
+    elif check_profile_completeness(st.session_state.user_profile):
+        main_app_page()
     else:
-        st.error("Unable to load profile. Please try logging in again.")
-        st.session_state.token = None
-        st.rerun()
+        setup_profile_page()

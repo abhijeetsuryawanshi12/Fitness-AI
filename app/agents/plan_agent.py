@@ -100,7 +100,7 @@ prompt_template = ChatPromptTemplate.from_template(
     - Favorite Foods: {favorite_foods}
 
     **Instructions:**
-    1. Generate a full plan for 6 workout days.
+    1. Generate a full plan for 7 workout days. Note: The plan should be for one week.
     2. Each day should contain:
        - A theme (e.g., Push Day, Pull Day, Legs Day, Cardio, Rest Day, etc.)
        - 5-7 exercises
@@ -156,12 +156,12 @@ prompt_template = ChatPromptTemplate.from_template(
       ]
     }}
 
-    Respond ONLY with a valid JSON object.
+    Respond ONLY with a valid JSON object that conforms to the specified structure.
     """
 )
 
-# Parser
-output_parser = JsonOutputParser()
+# Parser - PRODUCTION IMPROVEMENT: Validate the JSON output against our Pydantic model.
+output_parser = JsonOutputParser(pydantic_object=FullPlan)
 
 # Chain
 plan_chain = prompt_template | llm | output_parser
@@ -203,4 +203,5 @@ async def generate_full_plan(user: dict, plan_type: str) -> Dict:
 
     print(f"Generating full plan for user: {inputs['name']}")
     result = await plan_chain.ainvoke(inputs)
+    # The output parser now returns a Pydantic model instance, so we convert it to a dict
     return result

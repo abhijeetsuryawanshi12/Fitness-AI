@@ -4,6 +4,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import User, UserUpdate
 from app.db import get_database
 from app.security import get_current_user
+from datetime import datetime, date, timedelta, timezone
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
@@ -15,13 +16,44 @@ USER_COLLECTION = "users"
     summary="Get current user's profile"
 )
 async def get_my_profile(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
     Retrieve the full profile for the currently authenticated user.
+    Also checks if the activity streak should be reset if a day has been missed.
     """
-    # The user object is already retrieved from the token by the dependency.
-    return current_user
+    today = datetime.now(timezone.utc).date()
+    yesterday = today - timedelta(days=1)
+    
+    # Fetch fresh data from DB to ensure it's not stale from the token
+    user_db_data = await db[USER_COLLECTION].find_one({"_id": current_user.id})
+    
+    if not user_db_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found."
+        )
+
+    last_completion_date = user_db_data.get("last_completed_task_date")
+    
+    if last_completion_date:
+        # The date from DB is a datetime object, convert to date for comparison
+        if isinstance(last_completion_date, datetime):
+            last_completion_date = last_completion_date.date()
+        
+        # If the last completion was before yesterday, reset the streak.
+        if last_completion_date < yesterday:
+            if user_db_data.get("streak", 0) > 0:
+                await db[USER_COLLECTION].update_one(
+                    {"_id": current_user.id},
+                    {"$set": {"streak": 0}}
+                )
+                print(f"User {current_user.id} streak reset due to inactivity.")
+                # Refresh user data to return the reset streak
+                user_db_data["streak"] = 0
+
+    return User(**user_db_data)
 
 @router.put(
     "/me",
