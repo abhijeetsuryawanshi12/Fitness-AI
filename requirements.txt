@@ -21,3 +21,14 @@ python-jose[cryptography]
 pydantic[email]
 # passlib==5.3.1
 # bcrypt==3.2.0
+
+#Voice feature
+elevenlabs 
+requests 
+sounddevice 
+numpy
+soundfile 
+scipy
+pyaudio
+assemblyai[extras]
+mpv
