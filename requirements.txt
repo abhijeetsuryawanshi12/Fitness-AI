@@ -32,3 +32,11 @@ scipy
 pyaudio
 assemblyai[extras]
 mpv
+ffmpeg-python
+
+openwakeword
+faster-whisper
+webrtcvad
+pyaudio
+pyttsx3
+numpy

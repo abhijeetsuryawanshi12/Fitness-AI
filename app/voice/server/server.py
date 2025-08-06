@@ -112,16 +112,16 @@ async def create_room_and_token() -> tuple[str, str]:
         HTTPException: If room creation or token generation fails
     """
     room_url = os.getenv("DAILY_SAMPLE_ROOM_URL", None)
-    token = os.getenv("DAILY_SAMPLE_ROOM_TOKEN", None)
     if not room_url:
         room = await daily_helpers["rest"].create_room(DailyRoomParams())
-        if not room.url:
+        if not room or not room.url:
             raise HTTPException(status_code=500, detail="Failed to create room")
         room_url = room.url
 
-        token = await daily_helpers["rest"].get_token(room_url)
-        if not token:
-            raise HTTPException(status_code=500, detail=f"Failed to get token for room: {room_url}")
+    # Always create a fresh token for the bot.
+    token = await daily_helpers["rest"].get_token(room_url)
+    if not token:
+        raise HTTPException(status_code=500, detail=f"Failed to get token for room: {room_url}")
 
     return room_url, token
 
@@ -152,8 +152,9 @@ async def start_agent(request: Request):
     # Spawn a new bot process
     try:
         bot_file = get_bot_file()
+        command = f"python3 -m {bot_file} -u {room_url} -t {token}"
         proc = subprocess.Popen(
-            [f"python3 -m {bot_file} -u {room_url} -t {token}"],
+            command,
             shell=True,
             bufsize=1,
             cwd=os.path.dirname(os.path.abspath(__file__)),
@@ -184,8 +185,9 @@ async def rtvi_connect(request: Request) -> Dict[Any, Any]:
     # Start the bot process
     try:
         bot_file = get_bot_file()
+        command = f"python3 -m {bot_file} -u {room_url} -t {token}"
         proc = subprocess.Popen(
-            [f"python3 -m {bot_file} -u {room_url} -t {token}"],
+            command,
             shell=True,
             bufsize=1,
             cwd=os.path.dirname(os.path.abspath(__file__)),

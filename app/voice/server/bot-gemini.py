@@ -38,7 +38,7 @@ from pipecat.frames.frames import (
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
 from pipecat.services.gemini_multimodal_live.gemini import GeminiMultimodalLiveLLMService
@@ -146,7 +146,7 @@ async def main():
 
         # Set up conversation context and management
         # The context_aggregator will automatically collect conversation context
-        context = OpenAILLMContext(messages)
+        context = LLMContext(messages)
         context_aggregator = llm.create_context_aggregator(context)
 
         ta = TalkingAnimation()

@@ -1,5 +1,6 @@
 import assemblyai as aai
-from elevenlabs import set_api_key, generate, play, voices, stream
+from elevenlabs import play, voices, stream
+from elevenlabs.client import ElevenLabs
 from langchain.chat_models import init_chat_model
 from langchain_core.output_parsers import StrOutputParser
 import os
@@ -13,8 +14,20 @@ class AI_Assistant:
         """
         Initialize the AI Assistant with ElevenLabs API key.
         """
-        self.assemblyai_client = aai.Client(os.environ.get("ASSEMBLYAI_API_KEY"))
-        self.elevenlabs_api_key = os.environ.get("ELEVEN_LABS_API_KEY")
+        # --- ERROR FIX: Correctly initialize the AssemblyAI Client ---
+        assemblyai_api_key = os.environ.get("ASSEMBLYAI_API_KEY")
+        if not assemblyai_api_key:
+            raise ValueError("ASSEMBLYAI_API_KEY environment variable not set.")
+        
+        # 1. Create a Settings object with your API key
+        settings = aai.Settings(api_key=assemblyai_api_key)
+        
+        # 2. Pass the settings object to the Client constructor
+        self.assemblyai_client = aai.Client(settings=settings)
+        # --- END FIX ---
+
+        # self.assemblyai_client = aai.Client(assemblyai_api_key)
+        self.elevenlabs_client = ElevenLabs(api_key=os.environ.get("ELEVEN_LABS_API_KEY"))
         self.llm = init_chat_model("gemini-2.0-flash",
                                    model_provider="google_genai",
                                    api_key=os.environ.get("GEMINI_API_KEY"),
@@ -91,4 +104,37 @@ class AI_Assistant:
         )
 
         ai_response = response.choices[0].message.content
+
+        self.generate_audio(ai_response)
+
+        self.start_transcription()
         print(f"AI: {ai_response}", end="\r\n")
+
+    def generate_audio(self, text):
+        """
+        Generate audio from text using ElevenLabs API.
+        """
+
+        self.full_transcript.append(
+            {"role": "assistant", "content": text}
+        
+        )
+        print(f"Generating audio for: {text}")
+
+        
+
+        audio_stream = self.elevenlabs_client.text_to_speech.convert(
+            text=text,
+            voice_id="JBFqnCBsd6RMkjVDRZzb",
+            model_id="eleven_multilingual_v2",
+            output_format="mp3_44100_128", 
+        )
+
+        play(audio_stream)
+
+
+greeting = "Thank you for calling the AI Fitness Assistant. How can I assist you today?"
+
+ai_assistant = AI_Assistant()
+ai_assistant.generate_audio(greeting)
+ai_assistant.start_transcription()
