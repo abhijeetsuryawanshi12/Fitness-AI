@@ -1,7 +1,9 @@
+# app/routes/tasks.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
-from app.models import Task, TaskUpdate
+from app.models import Task, User
+from app.security import get_current_user
 from typing import List
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -10,34 +12,20 @@ from datetime import datetime, time, timezone
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 TASK_COLLECTION = "tasks"
-USER_COLLECTION = "users"
 
 @router.get(
-    "/user/{user_id}",
+    "/today",
     response_model=List[Task],
-    summary="Get tasks for a user for the current day"
+    summary="Get tasks for the current user for today"
 )
-async def get_tasks_for_today(
-    user_id: str,
+async def get_my_tasks_for_today(
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Retrieves all workout and diet tasks for a given user for the current calendar day, based on UTC.
+    Retrieves all workout and diet tasks for the authenticated user for the current calendar day (UTC).
     """
-    try:
-        user_obj_id = ObjectId(user_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid user ID format: {user_id}"
-        )
-    
-    user = await db[USER_COLLECTION].find_one({"_id": user_obj_id})
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found"
-        )
+    user_id_str = str(current_user.id)
 
     # Define the start and end of the current day in UTC
     today = datetime.now(timezone.utc).date()
@@ -45,7 +33,7 @@ async def get_tasks_for_today(
     end_of_day = datetime.combine(today, time.max, tzinfo=timezone.utc)
 
     cursor = db[TASK_COLLECTION].find({
-        "user_id": user_id, # Query using the string user_id, which is consistent with the DB
+        "user_id": user_id_str,
         "task_date": {
             "$gte": start_of_day,
             "$lte": end_of_day
@@ -62,10 +50,12 @@ async def get_tasks_for_today(
 )
 async def toggle_task_completion(
     task_id: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
     Toggles the 'completed' status of a specific task.
+    Ensures the task belongs to the authenticated user.
     """
     try:
         task_obj_id = ObjectId(task_id)
@@ -80,6 +70,13 @@ async def toggle_task_completion(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task with id {task_id} not found"
+        )
+    
+    # --- Authorization Check ---
+    if task.get("user_id") != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to modify this task."
         )
 
     # Toggle the completion status

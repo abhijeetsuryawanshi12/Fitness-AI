@@ -102,7 +102,7 @@ prompt_template = ChatPromptTemplate.from_template(
     **Instructions:**
     1. Generate a full plan for 6 workout days.
     2. Each day should contain:
-       - A theme (e.g., Push Day, Pull Day)
+       - A theme (e.g., Push Day, Pull Day, Legs Day, Cardio, Rest Day, etc.)
        - 5-7 exercises
        - For each exercise: name, sets, reps, weights per set, and detailed execution instructions
        - 4-6 meals with accurate nutrition facts

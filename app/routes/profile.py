@@ -1,71 +1,43 @@
+# app/routes/profile.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import User, UserUpdate
 from app.db import get_database
-from bson import ObjectId
-from bson.errors import InvalidId
+from app.security import get_current_user
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
 USER_COLLECTION = "users"
 
 @router.get(
-    "/{user_id}",
+    "/me",
     response_model=User,
-    summary="Get user profile details"
+    summary="Get current user's profile"
 )
-async def get_user_profile(
-    user_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+async def get_my_profile(
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve the full profile for a given user.
+    Retrieve the full profile for the currently authenticated user.
     """
-    try:
-        user_obj_id = ObjectId(user_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid user ID format: {user_id}"
-        )
-    
-    user = await db[USER_COLLECTION].find_one({"_id": user_obj_id})
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found"
-        )
-    
-    return user
+    # The user object is already retrieved from the token by the dependency.
+    return current_user
 
 @router.put(
-    "/{user_id}",
+    "/me",
     response_model=User,
-    summary="Update user profile details"
+    summary="Update current user's profile"
 )
-async def update_user_profile(
-    user_id: str,
+async def update_my_profile(
     user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Update a user's profile information. Only the provided fields will be updated.
+    Update the current user's profile information. 
+    Only the provided fields will be updated. This is used for both
+    regular edits and the initial detailed onboarding form.
     """
-    try:
-        user_obj_id = ObjectId(user_id)
-    except InvalidId:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid user ID format: {user_id}"
-        )
-        
-    if not await db[USER_COLLECTION].find_one({"_id": user_obj_id}):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found"
-        )
-
-    # Create a dictionary of fields to update, excluding any that are None
     update_data = user_update.model_dump(exclude_unset=True)
 
     if not update_data:
@@ -75,12 +47,12 @@ async def update_user_profile(
         )
 
     await db[USER_COLLECTION].update_one(
-        {"_id": user_obj_id},
+        {"_id": current_user.id},
         {"$set": update_data}
     )
 
     # Fetch and return the updated user document
-    updated_user = await db[USER_COLLECTION].find_one({"_id": user_obj_id})
+    updated_user = await db[USER_COLLECTION].find_one({"_id": current_user.id})
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
