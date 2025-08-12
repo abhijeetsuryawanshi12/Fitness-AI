@@ -1,5 +1,7 @@
-#Frontend-dependencies
 streamlit
 requests
 pandas
 plotly
+streamlit-webrtc
+pydub
+av

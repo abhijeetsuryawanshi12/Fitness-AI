@@ -14,11 +14,10 @@ load_dotenv()
 
 # Assume you have this file and function
 from agent import generate_response 
-from tts import generate_audio
+from tts import text_to_speech_bytes
 
 # --- Configuration ---
 # It's better practice to load this from an environment variable or a config file
-# YOUR_API_KEY = "97bb2d6f45cd4959bb198e350e17a241"  # Replace with your actual API key
 
 # AssemblyAI WebSocket Configuration
 CONNECTION_PARAMS = {"sample_rate": 16000, "format_turns": True}
@@ -99,7 +98,7 @@ async def message_receiver(ws: websockets.WebSocketClientProtocol, stop_event: a
                     print("🤖 AI is thinking...")
                     response = await generate_response(transcript)
                     print(f"🤖 AI: {response}")
-                    await generate_audio(response)
+                    await text_to_speech_bytes(response)
                 else:
                     # Print partial transcript on the same line
                     print(f"\r💬 Partial: {transcript}", end='')
