@@ -1,4 +1,3 @@
-# app/config.py
 import os
 from dotenv import load_dotenv
 
@@ -13,6 +12,10 @@ class Settings:
     MONGODB_URI: str = os.getenv("MONGODB_URI")
     DB_NAME: str = os.getenv("DB_NAME", "user_fitness")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
+
+    # --- NEW: Keys for Voice Services ---
+    ASSEMBLYAI_API_KEY: str = os.getenv("ASSEMBLYAI_API_KEY")
+    ELEVEN_LABS_API_KEY: str = os.getenv("ELEVEN_LABS_API_KEY")
 
     # ChromaDB settings for persisting vector store on disk
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "chroma_db_store")
@@ -32,5 +35,12 @@ class Settings:
     # PRODUCTION SAFETY: Ensure a real secret key is set and not the default
     if not SECRET_KEY or SECRET_KEY == "a_very_secret_key_that_should_be_in_env_file":
         raise ValueError("FATAL: SECRET_KEY environment variable not set or is set to the default. Please generate a secure key.")
+
+    # --- NEW: Validation for Voice Service Keys ---
+    # We print a warning so the app can start, but voice features will fail.
+    if not ASSEMBLYAI_API_KEY:
+        print("Warning: ASSEMBLYAI_API_KEY is not set. Voice input will not work.")
+    if not ELEVEN_LABS_API_KEY:
+        print("Warning: ELEVEN_LABS_API_KEY is not set. Voice output will not work.")
 
 settings = Settings()

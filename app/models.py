@@ -185,6 +185,12 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
 
+# --- NEW VOICE CHAT MODEL ---
+class VoiceChatResponse(BaseModel):
+    user_text: str
+    ai_text: str
+    audio_b64: str # base64 encoded audio bytes
+
 # --- NEW DOCUMENT MODEL ---
 class Document(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")

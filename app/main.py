@@ -1,4 +1,3 @@
-# app/main.py
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.db import connect_to_mongo, close_mongo_connection
@@ -10,6 +9,7 @@ from app.routes.progress import router as progress_router
 from app.routes.profile import router as profile_router
 from app.routes.food import router as food_router
 from app.routes.document import router as document_router
+from app.routes.voice import router as voice_router
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -46,6 +46,7 @@ app.include_router(tasks_router)
 app.include_router(progress_router)
 app.include_router(food_router)
 app.include_router(document_router)
+app.include_router(voice_router)
 
 @app.get("/", tags=["Root"])
 def read_root():

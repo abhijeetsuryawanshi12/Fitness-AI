@@ -5,10 +5,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timezone, date, timedelta
 import time
+import base64
 
 
 # --- CONFIGURATION ---
-BACKEND_URL = "http://127.0.0.1:5000"
+BACKEND_URL = "http://127.0.0.1:8000"
 st.set_page_config(layout="wide", page_title="FitnessAI Companion")
 st.title("FitnessAI Companion")
 
@@ -86,6 +87,11 @@ def generate_plan(plan_type):
 
 def post_chat_message(message):
     return api_request("post", "/chat/", json={"message": message})
+
+def post_voice_chat(audio_file_bytes):
+    """Sends recorded audio to the voice chat endpoint."""
+    files = {'file': ('voice_message.wav', audio_file_bytes, 'audio/wav')}
+    return api_request("post", "/voice/chat", files=files)
 
 @st.cache_data(ttl=60)
 def get_daily_tasks():
@@ -528,13 +534,16 @@ def main_app_page():
         st.header("Chat with your AI Assistant")
 
         # Display existing chat messages
-        for msg in st.session_state.chat_messages:
-            # Add a safety check to prevent errors if a message is malformed
+        # --- NEW: Display TTS audio if available in chat history ---
+        for i, msg in enumerate(st.session_state.chat_messages):
             if msg and "role" in msg and "content" in msg:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
-        
-        # Chat input logic
+                    # Check if there is audio attached to this assistant message
+                    if msg["role"] == "assistant" and "audio" in msg:
+                        st.audio(msg["audio"], format="audio/mp3")
+
+        # Text input logic
         if prompt := st.chat_input("Ask about your plan or documents..."):
             st.session_state.chat_messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
@@ -545,9 +554,45 @@ def main_app_page():
                 if response and "response" in response:
                     assistant_response = response["response"]
                     st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
-                    with st.chat_message("assistant"):
-                        st.markdown(assistant_response)
+                    # Rerun to display the new message immediately
+                    st.rerun()
         
+        # --- MODIFIED: Voice Chat UI ---
+        st.markdown("---")
+        st.subheader("Or, Talk to Your Assistant")
+
+        audio_input = st.audio_input("Record your message:", key="voice_chat_recorder")
+
+        if audio_input:
+            # We add a button to avoid processing the audio on every minor interaction
+            if st.button("Send Voice Message", key="send_voice_button", use_container_width=True):
+                with st.spinner("Sending your voice message... This may take a moment."):
+                    audio_bytes = audio_input.getvalue()
+                    response = post_voice_chat(audio_bytes)
+
+                    if response:
+                        user_text = response.get('user_text', 'No transcription available.')
+                        ai_text = response.get('ai_text', 'No response from AI.')
+                        audio_b64 = response.get('audio_b64')
+
+                        st.session_state.chat_messages.append({"role": "user", "content": f"🎤: {user_text}"})
+                        
+                        assistant_message = {"role": "assistant", "content": ai_text}
+                        if audio_b64:
+                            try:
+                                tts_audio_bytes = base64.b64decode(audio_b64)
+                                # Attach the audio bytes to the message object for rendering
+                                assistant_message["audio"] = tts_audio_bytes
+                            except Exception as e:
+                                st.error(f"Error decoding audio response: {e}")
+                        
+                        st.session_state.chat_messages.append(assistant_message)
+                        
+                        # Rerun to display the new messages and the audio player
+                        st.rerun()
+                    else:
+                        st.error("Failed to process voice message. The server might be busy or an API key might be missing. Please try again.")
+
         with st.expander("Upload a Document for Analysis"):
             uploaded_file = st.file_uploader("Upload a PDF (e.g., lab report, doctor's notes)", type="pdf", key="chat_uploader")
             if uploaded_file is not None:
@@ -567,7 +612,7 @@ if 'token' not in st.session_state: st.session_state.token = None
 if 'user_name' not in st.session_state: st.session_state.user_name = None
 if 'user_profile' not in st.session_state: st.session_state.user_profile = None
 if 'last_generated_plan' not in st.session_state: st.session_state.last_generated_plan = None
-if 'chat_messages' not in st.session_state: st.session_state.chat_messages = [] # FIX: Initialize as an empty list
+if 'chat_messages' not in st.session_state: st.session_state.chat_messages = []
 
 load_css()
 
