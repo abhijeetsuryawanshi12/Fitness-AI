@@ -28,6 +28,7 @@ function Logo() {
   )
 }
 
+
 // Navigation items configuration
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: '📊' },
@@ -54,6 +55,7 @@ function Sidebar() {
       {/* Logo and collapse button */}
       <div className="flex items-center justify-between border-b border-gray-200">
         {!collapsed && <Logo />}
+
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="p-3 hover:bg-gray-100 rounded-lg transition-colors"
