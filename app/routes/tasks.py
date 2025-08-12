@@ -7,11 +7,12 @@ from app.security import get_current_user
 from typing import List
 from bson import ObjectId
 from bson.errors import InvalidId
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, date, timedelta
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 TASK_COLLECTION = "tasks"
+USER_COLLECTION = "users"
 
 @router.get(
     "/today",
@@ -56,6 +57,7 @@ async def toggle_task_completion(
     """
     Toggles the 'completed' status of a specific task.
     Ensures the task belongs to the authenticated user.
+    If a task is marked as complete, it updates the user's activity streak.
     """
     try:
         task_obj_id = ObjectId(task_id)
@@ -82,6 +84,37 @@ async def toggle_task_completion(
     # Toggle the completion status
     new_status = not task.get("completed", False)
     
+    # --- STREAK LOGIC ---
+    if new_status is True:
+        today = datetime.now(timezone.utc).date()
+        
+        # We need the most up-to-date user object for the streak logic
+        user_from_db = await db[USER_COLLECTION].find_one({"_id": current_user.id})
+        last_completion_date = user_from_db.get("last_completed_task_date")
+        if last_completion_date and isinstance(last_completion_date, datetime):
+            last_completion_date = last_completion_date.date()
+
+        # Only update the streak if it hasn't been updated for today yet.
+        if last_completion_date != today:
+            yesterday = today - timedelta(days=1)
+            
+            if last_completion_date == yesterday:
+                # User continued the streak
+                new_streak = user_from_db.get("streak", 0) + 1
+            else:
+                # Streak is broken or just starting
+                new_streak = 1
+            
+            # Update user in DB. Store date as datetime at midnight UTC for consistency.
+            await db[USER_COLLECTION].update_one(
+                {"_id": current_user.id},
+                {"$set": {
+                    "streak": new_streak,
+                    "last_completed_task_date": datetime.combine(today, time.min, tzinfo=timezone.utc)
+                }}
+            )
+            print(f"User {current_user.id} streak updated to {new_streak}.")
+
     updated_task = await db[TASK_COLLECTION].find_one_and_update(
         {"_id": task_obj_id},
         {"$set": {"completed": new_status}},

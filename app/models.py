@@ -1,4 +1,3 @@
-# app/models.py
 from pydantic import BaseModel, Field, ConfigDict, GetCoreSchemaHandler, model_validator, EmailStr
 from pydantic_core import CoreSchema, core_schema
 from typing import Optional, Union, Dict, Literal, Any, List
@@ -77,6 +76,11 @@ class User(BaseModel):
     
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    # --- NEW STREAK FIELDS ---
+    streak: int = Field(default=0, description="Current daily task completion streak.")
+    last_completed_task_date: Optional[date] = Field(None, description="The date of the last day a task was completed.")
+
+
     @model_validator(mode='after')
     def validate_diet_type(self) -> 'User':
         if self.diet_type == "Other" and not self.diet_type_other:
@@ -94,7 +98,8 @@ class User(BaseModel):
             "primary_goal": "Build Muscle", "goal_deadline": "3 Months", "workout_time_minutes": 60,
             "preferred_workout_time": "Morning", "workout_experience": "Intermediate", "medical_conditions": ["Asthma"],
             "injuries": ["Past knee sprain"], "energy_level": 7, "sleep_quality": 8, "diet_type": "Anything", "diet_type_other": None,
-            "meals_per_day": 3, "smoking_habit": "Non-smoker", "alcohol_consumption": "Light", "favorite_foods": ["Salmon", "Quinoa"]
+            "meals_per_day": 3, "smoking_habit": "Non-smoker", "alcohol_consumption": "Light", "favorite_foods": ["Salmon", "Quinoa"],
+            "streak": 5, "last_completed_task_date": "2023-10-26"
         }}
     )
 
@@ -179,6 +184,12 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+
+# --- NEW VOICE CHAT MODEL ---
+class VoiceChatResponse(BaseModel):
+    user_text: str
+    ai_text: str
+    audio_b64: str # base64 encoded audio bytes
 
 # --- NEW DOCUMENT MODEL ---
 class Document(BaseModel):

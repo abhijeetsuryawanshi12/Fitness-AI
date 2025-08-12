@@ -55,6 +55,9 @@ async def register_user(
         "smoking_habit": None,
         "alcohol_consumption": None,
         "favorite_foods": [],
+        # --- NEW: Initialize streak fields on registration ---
+        "streak": 0,
+        "last_completed_task_date": None,
     }
     
     result = await db.users.insert_one(user_document)
@@ -90,5 +93,4 @@ async def login_for_access_token(
         data={"sub": user["email"]}
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
     return {"access_token": access_token, "token_type": "bearer"}

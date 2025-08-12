@@ -28,6 +28,14 @@ async def connect_to_mongo():
         )
         print("Ensured unique email index exists for users collection.")
 
+        # PRODUCTION IMPROVEMENT: Add indexes for the tasks collection for performance.
+        tasks_collection = db.db.tasks
+        await tasks_collection.create_index(
+            [("user_id", pymongo.ASCENDING), ("task_date", pymongo.DESCENDING)],
+            name="user_id_task_date_idx"
+        )
+        print("Ensured user_id and task_date index exists for tasks collection.")
+
     except Exception as e:
         print(f"Could not connect to MongoDB or create indexes: {e}")
         raise
