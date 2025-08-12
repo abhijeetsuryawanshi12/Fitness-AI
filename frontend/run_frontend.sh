@@ -1,11 +1,13 @@
-#!/bin/bash
-# This script installs dependencies and runs the Streamlit app.
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Navigate to the script's directory
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Install dependencies from requirements.txt
-pip install -r requirements.txt
+if [ ! -d node_modules ]; then
+  echo "Installing frontend deps..."
+  npm ci || npm install
+fi
 
-# Run the Streamlit app
-streamlit run streamlit_app.py
+echo "Starting Vite dev server on http://localhost:5173"
+npm run dev
