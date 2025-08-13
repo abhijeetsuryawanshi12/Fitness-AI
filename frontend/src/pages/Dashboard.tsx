@@ -24,7 +24,7 @@ import {
 const api = {
   get: (endpoint) => {
     const mockData = {
-      '/profile/me': { data: { name: 'Alex Johnson', email: 'alex@example.com', streak: 12 } },
+      '/profile/me': { data: { name: 'Abhijeet', email: 'abhijeet@example.com', streak: 12 } },
       '/tasks/today': { data: Array.from({ length: 6 }, (_, i) => ({ id: i, title: `Task ${i + 1}`, completed: i < 3 })) },
       '/': { data: { message: 'Connected' } }
     }
