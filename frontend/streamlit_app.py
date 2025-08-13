@@ -85,8 +85,21 @@ def login_user(email, password):
 def generate_plan(plan_type):
     return api_request("post", "/plan/generate", json={"type": plan_type})
 
-def post_chat_message(message):
-    return api_request("post", "/chat/", json={"message": message})
+def post_chat_message(message, session_id=None):
+    payload = {"message": message}
+    if session_id:
+        payload["session_id"] = session_id
+    return api_request("post", "/chat/", json=payload)
+
+@st.cache_data(ttl=3600)
+def get_chat_sessions():
+    return api_request("get", "/chat/sessions")
+
+@st.cache_data(ttl=10)
+def get_chat_history(session_id):
+    if not session_id:
+        return []
+    return api_request("get", f"/chat/sessions/{session_id}/history")
 
 def post_voice_chat(audio_file_bytes):
     """Sends recorded audio to the voice chat endpoint."""
@@ -101,19 +114,15 @@ def get_daily_tasks():
 def get_progress_data(period):
     return api_request("get", f"/progress/me?period={period}")
 
-# This function is now stateful and manages UI updates
 def toggle_task_completion_and_refresh(task_id):
     response = api_request("put", f"/tasks/{task_id}/toggle_completion")
     if response:
-        # Clear caches that depend on task completion
         st.cache_data.clear()
-        # Manually refetch user profile to update streak in the UI
         st.session_state.user_profile = get_user_profile()
         st.toast("Task status updated!")
     else:
         st.error("Failed to update task.")
 
-# No caching here to ensure we always get the latest profile data (like streak)
 def get_user_profile():
     if not st.session_state.get('token'):
         return None
@@ -123,7 +132,6 @@ def update_user_profile(update_data):
     response = api_request("put", "/profile/me", json=update_data)
     if response: 
         st.cache_data.clear()
-        # Refresh the profile in session state after update
         st.session_state.user_profile = response
         st.success("Profile updated successfully!")
     return response
@@ -146,7 +154,7 @@ def upload_document(file):
 
 # --- UI PAGES ---
 def logout():
-    keys_to_clear = ["token", "user_name", "user_profile", "last_generated_plan", "chat_messages"]
+    keys_to_clear = ["token", "user_name", "user_profile", "last_generated_plan", "chat_messages", "current_session_id", "chat_sessions_list"]
     for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
@@ -170,9 +178,9 @@ def login_page():
                         response = login_user(email, password)
                         if response and "access_token" in response:
                             st.session_state.token = response["access_token"]
-                            st.session_state.user_profile = None  # Reset profile
+                            st.session_state.user_profile = None
                             st.success("Logged in successfully!")
-                            time.sleep(1)  # Give a moment for the success message
+                            time.sleep(1)
                             st.rerun()
                         else:
                             st.error("Login failed. Please check your credentials.")
@@ -196,7 +204,7 @@ def login_page():
 def setup_profile_page():
     st.header("Just one more step! Let's build your profile. 🚀")
     st.write("Provide as much detail as possible for the best personalization.")
-
+    # (The rest of the setup_profile_page function remains unchanged)
     with st.form("onboarding_form"):
         st.subheader("👤 Basic Information")
         c1, c2, c3 = st.columns(3)
@@ -275,6 +283,7 @@ def setup_profile_page():
                         st.rerun()
 
 def profile_page():
+    # (The profile_page function remains unchanged)
     st.header("Your Profile")
     profile_data = st.session_state.user_profile
     if not profile_data:
@@ -283,7 +292,6 @@ def profile_page():
             st.rerun()
         return
 
-    # --- STREAK DISPLAY ---
     st.subheader("Your Stats")
     streak = profile_data.get('streak', 0)
     
@@ -332,6 +340,7 @@ def profile_page():
                     st.toast("No changes were made.")
 
 def display_task(task):
+    # (The display_task function remains unchanged)
     st.checkbox(
         task['name'], 
         value=task['completed'], 
@@ -367,7 +376,9 @@ def display_task(task):
                 with st.popover("See Full Nutrition Data"):
                     st.json(nutrition)
 
+
 def daily_tasks_page():
+    # (The daily_tasks_page function remains unchanged)
     st.header(f"Today's Plan - {datetime.now(timezone.utc).strftime('%A, %B %d')}")
     tasks = get_daily_tasks()
     
@@ -400,6 +411,7 @@ def daily_tasks_page():
                 display_task(task)
 
 def dashboard_page():
+    # (The dashboard_page function remains unchanged)
     st.header("Your Nutritional Progress")
     period = st.selectbox("Select a time period to view:", ("Daily", "Weekly", "Monthly"), key="progress_period").lower()
 
@@ -433,6 +445,7 @@ def dashboard_page():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def food_lens_page():
+    # (The food_lens_page function remains unchanged)
     st.header("📸 Food Lens")
     st.write("Get a nutritional analysis of your meal by providing an image.")
     st.info("The AI analysis is an estimation. For medical advice, please consult a professional.")
@@ -482,6 +495,92 @@ def food_lens_page():
         st.subheader("Analysis Result")
         st.markdown(st.session_state.food_analysis_result)
 
+def format_history_for_display(history_from_db):
+    """Converts the chat history from the backend into the format expected by the UI."""
+    formatted_messages = []
+    if not history_from_db:
+        return []
+    for msg in history_from_db:
+        role = "assistant" if msg.get('type') == 'ai' else 'user'
+        content = msg.get('content') or (msg.get('data') and msg['data'].get('content')) or ""
+        formatted_messages.append({"role": role, "content": content})
+    return formatted_messages
+
+def chatbot_page():
+    """Renders the main chat interface with session management."""
+    col1, col2 = st.columns([1, 3])
+
+    with col1:
+        st.subheader("Chat History")
+        if st.button("➕ New Chat", use_container_width=True):
+            st.session_state.current_session_id = None
+            st.session_state.chat_messages = []
+            st.rerun()
+
+        st.markdown("---")
+        
+        sessions = get_chat_sessions()
+        if sessions:
+            for session in sessions:
+                title = session.get('title', 'Untitled Chat')
+                title_short = (title[:25] + '...') if len(title) > 25 else title
+                session_id = session.get('_id')
+                if st.button(title_short, key=session_id, use_container_width=True, type="secondary" if st.session_state.get("current_session_id") != session_id else "primary"):
+                    if st.session_state.get("current_session_id") != session_id:
+                        st.session_state.current_session_id = session_id
+                        with st.spinner("Loading chat..."):
+                            history = get_chat_history(session_id)
+                            st.session_state.chat_messages = format_history_for_display(history)
+                        st.rerun()
+
+    with col2:
+        st.header("AI Assistant")
+        if not st.session_state.get("current_session_id"):
+            st.info("Start a new conversation by typing your message below.")
+
+        # Display chat messages from session state
+        for msg in st.session_state.get("chat_messages", []):
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        
+        # Capture chat input
+        if prompt := st.chat_input("Ask about your plan or documents..."):
+            # Append user message to state
+            st.session_state.chat_messages.append({"role": "user", "content": prompt})
+            
+            # Show a spinner while waiting for the backend
+            with st.spinner("Thinking..."):
+                response = post_chat_message(prompt, st.session_state.get('current_session_id'))
+            
+            # If the backend returns a valid response, process it
+            if response and "response" in response:
+                assistant_response = response["response"]
+                new_session_id = response["session_id"]
+                
+                # Append assistant message to state
+                st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
+                
+                # If this was a new chat, update the session_id and clear caches to refresh the sidebar
+                if not st.session_state.get('current_session_id'):
+                    st.session_state.current_session_id = new_session_id
+                    get_chat_sessions.clear()
+            else:
+                # If the backend fails, add an error message to the chat
+                st.session_state.chat_messages.append({"role": "assistant", "content": "Sorry, I ran into a problem. Please try again."})
+
+            # Rerun the app to display the new messages
+            st.rerun()
+
+        with st.expander("Upload a Document for Analysis"):
+            uploaded_file = st.file_uploader("Upload a PDF (e.g., lab report)", type="pdf", key="chat_uploader")
+            if uploaded_file is not None:
+                if st.button("Process Document"):
+                    with st.spinner(f"Processing '{uploaded_file.name}'..."):
+                        if upload_document(uploaded_file):
+                            st.success(f"File '{uploaded_file.name}' processed. You can now ask questions about it.")
+                        else:
+                            st.error("Failed to process the document.")
+
 def main_app_page():
     st.sidebar.header(f"Welcome, {st.session_state.user_name}!")
     st.sidebar.button("Logout", on_click=logout, use_container_width=True)
@@ -493,27 +592,23 @@ def main_app_page():
     with tabs[2]:
         st.header("Generate a New Plan")
         st.info("Generating a new plan will create a schedule of tasks in your 'Daily Tasks' tab for the next 7 days.")
-        
         plan_type = st.radio("Select plan type:", ("workout", "diet", "workout and diet"), horizontal=True, key="plan_gen_radio")
-        
         if st.button(f"Generate {plan_type.replace('and', '&')} Plan"):
             with st.spinner(f"Generating your personalized {plan_type} plan... This can take up to a minute."):
                 plan = generate_plan(plan_type)
                 if plan and "content" in plan:
                     st.session_state.last_generated_plan = plan
-                    st.cache_data.clear() # Clear old tasks
+                    st.cache_data.clear()
                     st.success(f"Successfully generated new {plan_type} plan!")
                     st.rerun()
                 else:
                     st.error("Could not generate the plan. The AI agent might be busy. Please try again.")
-
         if st.session_state.get("last_generated_plan"):
             plan_data = st.session_state.last_generated_plan
             plan_content = plan_data.get("content", {})
             st.markdown("---")
             st.subheader("Most Recently Generated Plan")
             st.markdown(f"### {plan_content.get('title', 'Generated Plan')}")
-            
             daily_schedule = plan_content.get("daily_plan", [])
             if not daily_schedule:
                 st.warning("The generated plan did not contain a schedule.")
@@ -522,97 +617,26 @@ def main_app_page():
                     with st.expander(f"**Day {day_plan.get('day')}: {day_plan.get('theme')}**"):
                         if day_plan.get("exercises"):
                             st.markdown("##### 🏋️ Exercises")
-                            for ex in day_plan.get("exercises", []):
-                                st.markdown(f"**{ex.get('name')}**: {ex.get('sets')} sets of {ex.get('reps')} reps")
+                            for ex in day_plan.get("exercises", []): st.markdown(f"**{ex.get('name')}**: {ex.get('sets')} sets of {ex.get('reps')} reps")
                         if day_plan.get("meals"):
                             st.markdown("##### 🥗 Meals")
-                            for meal in day_plan.get("meals", []):
-                                st.markdown(f"**{meal.get('meal_name')}**")
+                            for meal in day_plan.get("meals", []): st.markdown(f"**{meal.get('meal_name')}**")
     
     with tabs[3]: dashboard_page()
-    with tabs[4]: # Chatbot Tab
-        st.header("Chat with your AI Assistant")
-
-        # Display existing chat messages
-        # --- NEW: Display TTS audio if available in chat history ---
-        for i, msg in enumerate(st.session_state.chat_messages):
-            if msg and "role" in msg and "content" in msg:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
-                    # Check if there is audio attached to this assistant message
-                    if msg["role"] == "assistant" and "audio" in msg:
-                        st.audio(msg["audio"], format="audio/mp3")
-
-        # Text input logic
-        if prompt := st.chat_input("Ask about your plan or documents..."):
-            st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            with st.spinner("Thinking..."):
-                response = post_chat_message(prompt)
-                if response and "response" in response:
-                    assistant_response = response["response"]
-                    st.session_state.chat_messages.append({"role": "assistant", "content": assistant_response})
-                    # Rerun to display the new message immediately
-                    st.rerun()
-        
-        # --- MODIFIED: Voice Chat UI ---
-        st.markdown("---")
-        st.subheader("Or, Talk to Your Assistant")
-
-        audio_input = st.audio_input("Record your message:", key="voice_chat_recorder")
-
-        if audio_input:
-            # We add a button to avoid processing the audio on every minor interaction
-            if st.button("Send Voice Message", key="send_voice_button", use_container_width=True):
-                with st.spinner("Sending your voice message... This may take a moment."):
-                    audio_bytes = audio_input.getvalue()
-                    response = post_voice_chat(audio_bytes)
-
-                    if response:
-                        user_text = response.get('user_text', 'No transcription available.')
-                        ai_text = response.get('ai_text', 'No response from AI.')
-                        audio_b64 = response.get('audio_b64')
-
-                        st.session_state.chat_messages.append({"role": "user", "content": f"🎤: {user_text}"})
-                        
-                        assistant_message = {"role": "assistant", "content": ai_text}
-                        if audio_b64:
-                            try:
-                                tts_audio_bytes = base64.b64decode(audio_b64)
-                                # Attach the audio bytes to the message object for rendering
-                                assistant_message["audio"] = tts_audio_bytes
-                            except Exception as e:
-                                st.error(f"Error decoding audio response: {e}")
-                        
-                        st.session_state.chat_messages.append(assistant_message)
-                        
-                        # Rerun to display the new messages and the audio player
-                        st.rerun()
-                    else:
-                        st.error("Failed to process voice message. The server might be busy or an API key might be missing. Please try again.")
-
-        with st.expander("Upload a Document for Analysis"):
-            uploaded_file = st.file_uploader("Upload a PDF (e.g., lab report, doctor's notes)", type="pdf", key="chat_uploader")
-            if uploaded_file is not None:
-                if st.button("Process Document"):
-                    with st.spinner(f"Processing '{uploaded_file.name}'..."):
-                        upload_document(uploaded_file)
-                        st.success(f"File '{uploaded_file.name}' processed. You can now ask questions about it.")
-
+    with tabs[4]: chatbot_page()
     with tabs[5]: food_lens_page()
 
 # --- MAIN APP ROUTER LOGIC ---
 def check_profile_completeness(user_data):
     return user_data and user_data.get("age") is not None
 
-# Correctly initialize session state to prevent errors
+# Initialize session state keys
 if 'token' not in st.session_state: st.session_state.token = None
 if 'user_name' not in st.session_state: st.session_state.user_name = None
 if 'user_profile' not in st.session_state: st.session_state.user_profile = None
 if 'last_generated_plan' not in st.session_state: st.session_state.last_generated_plan = None
 if 'chat_messages' not in st.session_state: st.session_state.chat_messages = []
+if 'current_session_id' not in st.session_state: st.session_state.current_session_id = None
 
 load_css()
 

@@ -178,12 +178,26 @@ class Task(BaseModel):
 class TaskUpdate(BaseModel):
     completed: bool
 
-# ChatRequest no longer needs user_id
+# --- CHAT MODELS (UPDATED) ---
 class ChatRequest(BaseModel):
     message: str
+    session_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
+    session_id: str
+
+class ChatSession(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    user_id: str
+    title: str
+    created_at: datetime
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat(), PyObjectId: str}
+    )
 
 # --- NEW VOICE CHAT MODEL ---
 class VoiceChatResponse(BaseModel):
