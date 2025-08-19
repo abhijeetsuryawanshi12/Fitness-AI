@@ -150,14 +150,21 @@ class Plan(BaseModel):
         }}
     )
 
+# --- MODIFIED: TASK-RELATED MODELS ---
 class Task(BaseModel):
     id: Optional[PyObjectId] = Field(None, alias="_id")
     user_id: str
-    plan_id: str
+    plan_id: Optional[str] = None # Plan can be optional for ad-hoc tasks
     task_date: datetime
     name: str = Field(..., description="The name/title of the task, e.g., 'Bench Press' or 'Breakfast'.")
-    details: Dict[str, Any] = Field(..., description="A dictionary containing detailed information about the task, such as exercises (sets, reps) or meal nutrition.")
-    type: Literal["workout", "diet"]
+    details: Dict[str, Any] = Field(default={}, description="A dictionary containing detailed information, like instructions.")
+    
+    # --- MODIFIED: Expanded type to match frontend ---
+    type: Literal["workout", "diet", "hydration", "sleep", "habit"]
+    
+    # --- MODIFIED: Added priority to match frontend ---
+    priority: Literal["high", "medium", "low"] = Field("medium", description="Priority of the task.")
+    
     completed: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -169,9 +176,30 @@ class Task(BaseModel):
             "plan_id": "60d5f3f7e6c4b4a3e8e1f4b2",
             "task_date": "2025-07-15T10:00:00Z", 
             "name": "Bench Press",
-            "details": {"sets": 3, "reps": 10, "weights": [50, 55, 60], "instructions": "Lower the bar to your chest..."},
+            "details": {"instructions": "Lower the bar to your chest..."},
             "type": "workout", 
+            "priority": "high",
             "completed": False
+        }}
+    )
+
+# --- NEW MODEL FOR CREATING TASKS ---
+# This model is used for the request body of the POST and PUT endpoints.
+class CreateTask(BaseModel):
+    name: str = Field(..., description="The name/title of the task.")
+    task_date: date # Use 'date' for input, which is simpler (YYYY-MM-DD)
+    type: Literal["workout", "diet", "hydration", "sleep", "habit"]
+    priority: Literal["high", "medium", "low"] = "medium"
+    details: Optional[Dict[str, Any]] = Field({}, description="Optional details like instructions.")
+    plan_id: Optional[str] = None
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {
+            "name": "Morning Run",
+            "task_date": "2025-08-20",
+            "type": "workout",
+            "priority": "medium",
+            "details": {"instructions": "Run for 30 minutes at a steady pace."}
         }}
     )
 

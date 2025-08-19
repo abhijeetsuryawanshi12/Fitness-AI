@@ -1,101 +1,30 @@
 import { useEffect, useState } from 'react'
 import { Plus, ChevronLeft, ChevronRight, Search, Filter, Calendar, Clock, Target, Droplets, Utensils, Dumbbell, Moon, Check, X, Edit2, Trash2, Star } from 'lucide-react'
+import api from '@/lib/api' // Import the actual API client
 
+// Updated Task type to match the backend model
 type Task = {
   _id: string
   name: string
-  description?: string
+  details?: {
+    instructions?: string
+    [key: string]: any // For other details like nutrition_facts, etc.
+  }
   type: 'workout' | 'diet' | 'hydration' | 'sleep' | 'habit' | string
   priority: 'high' | 'medium' | 'low'
   completed: boolean
-  task_date: string
+  task_date: string // Comes as an ISO string "YYYY-MM-DDTHH:mm:ss"
   time?: string
 }
 
+// Form data remains similar for the UI
 type TaskFormData = {
   name: string
-  description: string
+  description: string // This will map to/from 'details'
   type: string
   priority: 'high' | 'medium' | 'low'
-  task_date: string
+  task_date: string // Will be in "YYYY-MM-DD" format for the input
   time: string
-}
-
-// Mock API functions (logic unchanged)
-const mockApi = {
-  async getWeekTasks(startDate: string) {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    const tasks: Task[] = []
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(startDate)
-      date.setDate(date.getDate() + i)
-      return date.toISOString().split('T')[0]
-    })
-    
-    days.forEach((date, index) => {
-      if (index < 4) { // Add tasks to first 4 days for demo
-        tasks.push(
-          {
-            _id: `task-${date}-1`,
-            name: 'Morning Workout',
-            description: '30 min strength training',
-            type: 'workout',
-            priority: 'high',
-            completed: index < 2,
-            task_date: date,
-            time: '07:00'
-          },
-          {
-            _id: `task-${date}-2`,
-            name: 'Drink 2L Water',
-            description: 'Stay hydrated throughout the day',
-            type: 'hydration',
-            priority: 'medium',
-            completed: index === 0,
-            task_date: date,
-            time: '09:00'
-          },
-          {
-            _id: `task-${date}-3`,
-            name: 'Log meals',
-            description: 'Track macros in the app',
-            type: 'diet',
-            priority: 'low',
-            completed: false,
-            task_date: date,
-          }
-        )
-      }
-    })
-    
-    return { data: tasks }
-  },
-  
-  async createTask(task: TaskFormData) {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return { 
-      data: { 
-        _id: `task-${Date.now()}`, 
-        ...task,
-        completed: false 
-      } 
-    }
-  },
-  
-  async updateTask(id: string, updates: Partial<Task>) {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return { data: { _id: id, ...updates } }
-  },
-  
-  async deleteTask(id: string) {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return { success: true }
-  },
-  
-  async toggleCompletion(id: string) {
-    await new Promise(resolve => setTimeout(resolve, 300))
-    return { success: true }
-  }
 }
 
 const getTypeIcon = (type: string) => {
@@ -108,7 +37,6 @@ const getTypeIcon = (type: string) => {
   }
 }
 
-// Updated priority colors for the dark theme
 const getPriorityColor = (priority: string) => {
   switch (priority) {
     case 'high': return 'bg-red-500/20 text-red-300 border-red-500/30'
@@ -119,11 +47,12 @@ const getPriorityColor = (priority: string) => {
 }
 
 const formatDate = (dateString: string) => {
+  // Handle both ISO string and YYYY-MM-DD
   const date = new Date(dateString)
   return {
-    dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
-    dayNumber: date.getDate(),
-    month: date.toLocaleDateString('en-US', { month: 'short' })
+    dayName: date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
+    dayNumber: date.getUTCDate(),
+    month: date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
   }
 }
 
@@ -151,20 +80,23 @@ export default function WeeklyTasks() {
     time: ''
   })
 
-  // Generate week days array
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const date = new Date(currentWeek)
     date.setDate(date.getDate() + i)
     return date.toISOString().split('T')[0]
   })
 
+  // --- UPDATED: Load tasks from the backend ---
   const loadTasks = async () => {
     setLoading(true)
     try {
-      const { data } = await mockApi.getWeekTasks(currentWeek)
+      const { data } = await api.get('/tasks/week', {
+        params: { start_date: currentWeek }
+      })
       setTasks(data)
     } catch (error) {
       console.error('Error loading tasks:', error)
+      // Optionally, set an error state to show a message to the user
     }
     setLoading(false)
   }
@@ -175,29 +107,40 @@ export default function WeeklyTasks() {
 
   const getTasksForDay = (date: string) => {
     return tasks.filter(task => {
-      const matchesDate = task.task_date === date
+      const taskDateOnly = task.task_date.split('T')[0]
+      const matchesDate = taskDateOnly === date
       const matchesSearch = task.name.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesType = filterType === 'all' || task.type === filterType
-      const matchesStatus = filterStatus === 'all' || 
+      const matchesStatus = filterStatus === 'all' ||
         (filterStatus === 'completed' && task.completed) ||
         (filterStatus === 'pending' && !task.completed)
-      
+
       return matchesDate && matchesSearch && matchesType && matchesStatus
     })
   }
-
+  
   const getDayCompletionPercent = (date: string) => {
-    const dayTasks = tasks.filter(task => task.task_date === date)
+    const dayTasks = tasks.filter(task => task.task_date.split('T')[0] === date)
     if (dayTasks.length === 0) return 0
     const completed = dayTasks.filter(task => task.completed).length
     return Math.round((completed / dayTasks.length) * 100)
   }
 
+  // --- UPDATED: Create Task Handler ---
   const handleCreateTask = async () => {
     if (!taskForm.name.trim() || !taskForm.task_date) return
+
+    const newTaskPayload = {
+      name: taskForm.name,
+      type: taskForm.type,
+      priority: taskForm.priority,
+      task_date: taskForm.task_date,
+      details: { instructions: taskForm.description }, // Structure description into details
+      // time can be added to details if needed
+    }
     
     try {
-      const { data } = await mockApi.createTask(taskForm)
+      const { data } = await api.post('/tasks/', newTaskPayload)
       setTasks(prev => [...prev, data])
       resetTaskForm()
       setShowTaskModal(false)
@@ -206,13 +149,22 @@ export default function WeeklyTasks() {
     }
   }
 
+  // --- UPDATED: Update Task Handler ---
   const handleUpdateTask = async () => {
     if (!editingTask || !taskForm.name.trim()) return
+
+    const updatedTaskPayload = {
+      name: taskForm.name,
+      type: taskForm.type,
+      priority: taskForm.priority,
+      task_date: taskForm.task_date,
+      details: { instructions: taskForm.description },
+    }
     
     try {
-      await mockApi.updateTask(editingTask._id, taskForm)
+      const { data: updatedTask } = await api.put(`/tasks/${editingTask._id}`, updatedTaskPayload)
       setTasks(prev => prev.map(task => 
-        task._id === editingTask._id ? { ...task, ...taskForm } : task
+        task._id === editingTask._id ? updatedTask : task
       ))
       resetTaskForm()
       setEditingTask(null)
@@ -222,22 +174,24 @@ export default function WeeklyTasks() {
     }
   }
 
+  // --- UPDATED: Delete Task Handler ---
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm('Are you sure you want to delete this task?')) return
     
     try {
-      await mockApi.deleteTask(taskId)
+      await api.delete(`/tasks/${taskId}`)
       setTasks(prev => prev.filter(task => task._id !== taskId))
     } catch (error) {
       console.error('Error deleting task:', error)
     }
   }
 
+  // --- UPDATED: Toggle Completion Handler ---
   const handleToggleCompletion = async (task: Task) => {
     try {
-      await mockApi.toggleCompletion(task._id)
+      const { data: updatedTask } = await api.put(`/tasks/${task._id}/toggle_completion`)
       setTasks(prev => prev.map(t => 
-        t._id === task._id ? { ...t, completed: !t.completed } : t
+        t._id === task._id ? updatedTask : t
       ))
     } catch (error) {
       console.error('Error toggling task:', error)
@@ -260,10 +214,11 @@ export default function WeeklyTasks() {
       setEditingTask(task)
       setTaskForm({
         name: task.name,
-        description: task.description || '',
+        // Extract description from details, defaulting to an empty string
+        description: task.details?.instructions || '',
         type: task.type,
         priority: task.priority,
-        task_date: task.task_date,
+        task_date: task.task_date.split('T')[0], // Use only the date part for the input
         time: task.time || ''
       })
     } else {
@@ -301,11 +256,12 @@ export default function WeeklyTasks() {
       </div>
     )
   }
-
+  
+  // The rest of the JSX remains largely the same, but with one key change in the task mapping:
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 text-white">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
+        {/* Header and Controls JSX (unchanged) */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
             <div>
@@ -325,16 +281,13 @@ export default function WeeklyTasks() {
             </button>
           </div>
 
-          {/* Controls */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0 bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            {/* Week Navigation */}
             <div className="flex items-center space-x-2">
               <button onClick={() => navigateWeek('prev')} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5" /></button>
               <span className="font-semibold min-w-[150px] text-center">{formatDate(currentWeek).month} {formatDate(currentWeek).dayNumber} - {formatDate(weekDays[6]).month} {formatDate(weekDays[6]).dayNumber}</span>
               <button onClick={() => navigateWeek('next')} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ChevronRight className="w-5 h-5" /></button>
             </div>
 
-            {/* Search and Filters */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
@@ -355,7 +308,7 @@ export default function WeeklyTasks() {
             </div>
           </div>
         </div>
-
+        
         {/* Weekly Task Board */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
           {weekDays.map((date) => {
@@ -366,7 +319,6 @@ export default function WeeklyTasks() {
 
             return (
               <div key={date} className="bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 flex flex-col">
-                {/* Day Header */}
                 <div className={`p-4 border-b border-white/10 ${isToday ? 'bg-gradient-to-r from-blue-500 to-purple-600 rounded-t-2xl' : ''}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div>
@@ -380,7 +332,6 @@ export default function WeeklyTasks() {
                   </div>
                 </div>
 
-                {/* Tasks List */}
                 <div className="p-2 space-y-2 min-h-[300px] flex-grow">
                   {dayTasks.map((task) => (
                     <div key={task._id} className={`p-3 rounded-lg border transition-all hover:border-white/30 ${task.completed ? 'bg-black/20 border-white/10 opacity-60' : 'bg-white/5 border-white/10'}`}>
@@ -398,7 +349,8 @@ export default function WeeklyTasks() {
                       </div>
                       <div className={`${task.completed ? 'line-through text-slate-500' : 'text-white'}`}>
                         <div className="font-medium text-sm mb-1">{task.name}</div>
-                        {task.description && <div className="text-xs text-slate-400 mb-2">{task.description}</div>}
+                        {/* MODIFIED: Display description from task.details */}
+                        {task.details?.instructions && <div className="text-xs text-slate-400 mb-2">{task.details.instructions}</div>}
                         <div className="flex items-center justify-between">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${getPriorityColor(task.priority)}`}>{task.priority}</span>
                           {task.time && <span className="text-xs text-slate-400 flex items-center"><Clock className="w-3 h-3 mr-1" />{task.time}</span>}
@@ -417,8 +369,8 @@ export default function WeeklyTasks() {
             )
           })}
         </div>
-
-        {/* Task Modal */}
+        
+        {/* Task Modal JSX (unchanged) */}
         {showTaskModal && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
             <div className="bg-slate-800/80 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl w-full max-w-md">
