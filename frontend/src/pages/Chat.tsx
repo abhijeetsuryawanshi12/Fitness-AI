@@ -29,32 +29,7 @@ import {
   Flame
 } from 'lucide-react'
 
-// Mock API (logic unchanged)
-const api = {
-  post: (endpoint, data) => {
-    const responses = {
-      '/chat/': { data: { response: "That's a great question! I'd recommend starting with a 20-minute cardio workout followed by some strength training. Would you like me to create a specific plan for you?" }},
-      '/food/analyze': { data: { analysis: "This appears to be a healthy salad with mixed greens, tomatoes, and grilled chicken. Estimated calories: 350-400. Great source of protein (25g) and fiber. Perfect for weight management!" }},
-      '/voice/chat': { data: { user_text: "What's my workout plan for today?", ai_text: "Today I recommend a full-body workout focusing on compound movements. Start with 5 minutes warm-up, then squats, push-ups, and planks.", audio_b64: "base64audiodata..." }},
-      '/documents/upload': { data: { message: 'File uploaded successfully' }},
-      '/documents': { data: [
-        { _id: '1', filename: 'Workout_Plan_Week1.pdf', created_at: '2024-01-15T10:30:00Z' },
-        { _id: '2', filename: 'Nutrition_Guide.pdf', created_at: '2024-01-10T14:20:00Z' }
-      ]}
-    }
-    return Promise.resolve(responses[endpoint] || { data: {} })
-  },
-  get: (endpoint) => {
-    const responses = {
-      '/documents': { data: [
-        { _id: '1', filename: 'Workout_Plan_Week1.pdf', created_at: '2024-01-15T10:30:00Z' },
-        { _id: '2', filename: 'Nutrition_Guide.pdf', created_at: '2024-01-10T14:20:00Z' }
-      ]},
-      '/profile/me': { data: { name: 'Alex Johnson', streak: 12, avatar: null }}
-    }
-    return Promise.resolve(responses[endpoint] || { data: {} })
-  }
-}
+import api from '@/lib/api'
 
 type Message = {
   id: string
@@ -400,57 +375,122 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, loading])
 
-  const sendMessage = async (text, type = 'text', fileData = null) => {
-    if (!text.trim() && !fileData) return
+    const sendMessage = async (text, type = 'text', fileData = null, originalFile = null) => {
+      if (!text.trim() && !fileData) return
 
-    const userMessage = { id: Math.random().toString(36).substr(2, 9), role: 'user', text, timestamp: new Date(), type, fileData }
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
-    setLoading(true)
+      // The user's message now correctly handles displaying the image preview immediately
+      const userMessage = { 
+        id: Math.random().toString(36).substr(2, 9), 
+        role: 'user', 
+        text, 
+        timestamp: new Date(), 
+        type, 
+        fileData: originalFile ? { preview: URL.createObjectURL(originalFile) } : null
+      };
 
-    try {
-      let response
-      if (type === 'food-analysis') {
-        response = await api.post('/food/analyze', fileData)
-        const aiMessage = { id: Math.random().toString(36).substr(2, 9), role: 'ai', text: response.data.analysis, timestamp: new Date(), type: 'food-analysis', fileData: { image: fileData.get('image_url') || URL.createObjectURL(fileData.get('image_file')) }}
-        setMessages(prev => [...prev, aiMessage])
-      } else if (type === 'audio') {
-        response = await api.post('/voice/chat', fileData)
-        const aiMessage = { id: Math.random().toString(36).substr(2, 9), role: 'ai', text: response.data.ai_text, timestamp: new Date(), type: 'audio', audioUrl: `data:audio/mpeg;base64,${response.data.audio_b64}` }
-        setMessages(prev => [...prev, aiMessage])
-        if (soundEnabled && audioRef.current) {
-          audioRef.current.src = aiMessage.audioUrl
-          audioRef.current.play()
-        }
-      } else {
-        response = await api.post('/chat/', { message: text })
-        const aiMessage = { id: Math.random().toString(36).substr(2, 9), role: 'ai', text: response.data.response, timestamp: new Date(), type: 'text' }
-        setMessages(prev => [...prev, aiMessage])
-      }
-    } catch (error) {
-      console.error('Failed to send message:', error)
-      const errorMessage = { id: Math.random().toString(36).substr(2, 9), role: 'ai', text: 'Sorry, I encountered an error. Please try again.', timestamp: new Date(), type: 'text' }
-      setMessages(prev => [...prev, errorMessage])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleFileUpload = (file) => {
-    const formData = new FormData()
-    if (file.type.startsWith('image/')) {
-      formData.append('image_file', file)
-      sendMessage(`Analyze this food image: ${file.name}`, 'food-analysis', formData)
-    } else if (file.type.startsWith('audio/')) {
-      formData.append('file', file)
-      sendMessage(`Voice message: ${file.name}`, 'audio', formData)
-    } else {
-      const userMessage = { id: Math.random().toString(36).substr(2, 9), role: 'user', text: `Uploaded document: ${file.name}`, timestamp: new Date(), type: 'document', fileData: { name: file.name, size: Math.round(file.size / 1024) } }
       setMessages(prev => [...prev, userMessage])
-      formData.append('file', file)
-      api.post('/documents/upload', formData)
+      setInput('')
+      setLoading(true)
+
+      try {
+        if (type === 'food-analysis') {
+          // Your api instance handles the authenticated FormData POST perfectly.
+          const response = await api.post('/food/analyze', fileData);
+
+          // We use the 'originalFile' to create a preview URL for the AI's response bubble.
+          const aiMessage = {
+            id: Math.random().toString(36).substr(2, 9),
+            role: 'ai',
+            text: response.data.analysis,
+            timestamp: new Date(),
+            type: 'food-analysis',
+            fileData: { image: URL.createObjectURL(originalFile) }
+          };
+          setMessages(prev => [...prev, aiMessage]);
+
+        } else if (type === 'audio') {
+          // Same here: the api instance sends the audio file with the correct headers.
+          const response = await api.post('/voice/chat', fileData);
+
+          const aiMessage = {
+            id: Math.random().toString(36).substr(2, 9),
+            role: 'ai',
+            text: response.data.ai_text,
+            timestamp: new Date(),
+            type: 'audio',
+            audioUrl: `data:audio/mpeg;base64,${response.data.audio_b64}`
+          };
+          setMessages(prev => [...prev, aiMessage]);
+
+          // Trigger audio playback
+          if (soundEnabled && audioRef.current && aiMessage.audioUrl) {
+            audioRef.current.src = aiMessage.audioUrl;
+            audioRef.current.play();
+          }
+        
+        } else { // This is your text chat logic, which is already correct
+          const response = await api.post('/chat/', { message: text });
+          const aiMessage = { 
+            id: Math.random().toString(36).substr(2, 9), 
+            role: 'ai', 
+            text: response.data.response,
+            timestamp: new Date(), 
+            type: 'text' 
+          };
+          setMessages(prev => [...prev, aiMessage]);
+        }
+      } catch (error) {
+        console.error('Failed to send message:', error);
+        const errorText = error.response 
+          ? `Error: ${error.response.status} - ${error.response.data?.detail || 'Please try again.'}`
+          : 'A network error occurred. Please check your connection.';
+        const errorMessage = { 
+          id: Math.random().toString(36).substr(2, 9), 
+          role: 'ai', 
+          text: errorText, 
+          timestamp: new Date(), 
+          type: 'text' 
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      } finally {
+        setLoading(false);
+      }
     }
-  }
+    const handleFileUpload = (file) => {
+      const formData = new FormData();
+
+      if (file.type.startsWith('image/')) {
+        formData.append('image_file', file);
+        // Pass the original file as the fourth argument for UI preview
+        sendMessage(`Analyze this food image: ${file.name}`, 'food-analysis', formData, file);
+      
+      } else if (file.type.startsWith('audio/')) {
+        formData.append('file', file);
+        // Pass the original file for the audio case as well
+        sendMessage(`Voice message: ${file.name}`, 'audio', formData, file);
+
+      } else { // For documents
+        const userMessage = { 
+          id: Math.random().toString(36).substr(2, 9), 
+          role: 'user', 
+          text: `Uploaded document: ${file.name}`, 
+          timestamp: new Date(), 
+          type: 'document', 
+          fileData: { name: file.name, size: Math.round(file.size / 1024) } 
+        };
+        setMessages(prev => [...prev, userMessage]);
+        formData.append('file', file);
+
+        // Your api instance handles this perfectly.
+        api.post('/documents/upload', formData).then(response => {
+          console.log('Document uploaded:', response.data.message);
+          // Optionally, you could add an AI message here confirming the upload
+        }).catch(err => {
+          console.error("Document upload failed", err);
+          // And an error message in the chat
+        });
+      }
+    }
 
   const startRecording = async () => {
     try {
