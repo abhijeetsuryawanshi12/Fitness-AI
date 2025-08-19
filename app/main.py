@@ -28,10 +28,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
+# origins = ["http://localhost:5173"]  # <-- Add your frontend URL here
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or specific domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
