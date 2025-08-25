@@ -13,7 +13,10 @@ class Settings:
     DB_NAME: str = os.getenv("DB_NAME", "user_fitness")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
 
-    # --- NEW: Keys for Voice Services ---
+    # --- NEW: Redis for Celery ---
+    REDIS_URI: str = os.getenv("REDIS_URI", "redis://localhost:6379/0")
+
+    # --- Keys for Voice Services ---
     ASSEMBLYAI_API_KEY: str = os.getenv("ASSEMBLYAI_API_KEY")
     ELEVEN_LABS_API_KEY: str = os.getenv("ELEVEN_LABS_API_KEY")
 
@@ -36,7 +39,7 @@ class Settings:
     if not SECRET_KEY or SECRET_KEY == "a_very_secret_key_that_should_be_in_env_file":
         raise ValueError("FATAL: SECRET_KEY environment variable not set or is set to the default. Please generate a secure key.")
 
-    # --- NEW: Validation for Voice Service Keys ---
+    # --- Validation for Voice Service Keys ---
     # We print a warning so the app can start, but voice features will fail.
     if not ASSEMBLYAI_API_KEY:
         print("Warning: ASSEMBLYAI_API_KEY is not set. Voice input will not work.")

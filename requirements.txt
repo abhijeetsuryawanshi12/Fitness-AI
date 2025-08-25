@@ -40,3 +40,7 @@ webrtcvad
 pyaudio
 pyttsx3
 numpy
+
+celery
+redis
+langgraph

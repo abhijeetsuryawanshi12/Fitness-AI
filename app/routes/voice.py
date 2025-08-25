@@ -14,13 +14,13 @@ from app.agents.chat_agent import get_chat_response
 from app.vector_store import query_vector_store
 
 # Import context formatters and constants from the text chat route
-from app.routes.chat import (
-    format_plan_context,
-    format_tasks_context,
-    format_document_context,
-    PLAN_COLLECTION,
-    TASK_COLLECTION,
-)
+# from app.routes.chat import (
+#     format_plan_context,
+#     format_tasks_context,
+#     format_document_context,
+#     PLAN_COLLECTION,
+#     TASK_COLLECTION,
+# )
 
 router = APIRouter(prefix="/voice", tags=["Voice Assistant"])
 

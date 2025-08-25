@@ -2,61 +2,25 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
 from app.models import ChatRequest, ChatResponse, User, ChatSession
-from app.agents.chat_agent import get_chat_response
-from app.vector_store import query_vector_store
 from app.security import get_current_user
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 from typing import List, Any
 from bson import ObjectId
 from app.config import settings
 from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
 
+# --- NEW: Import the LangGraph agent ---
+from app.graphs.coach_agent import coach_agent_graph
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
-PLAN_COLLECTION = "plans"
-TASK_COLLECTION = "tasks"
 CHAT_SESSIONS_COLLECTION = "chat_sessions"
 CHAT_HISTORIES_COLLECTION = "chat_histories"
+USER_DATA_COLLECTION = "users"
+PLANS_COLLECTION = "plans"
+TASKS_COLLECTION = "tasks"
 
-
-def format_plan_context(plan: dict) -> str:
-    """Formats the plan dictionary into a readable string for the AI."""
-    if not plan or "content" not in plan:
-        return "The user does not have a plan generated yet."
-    
-    content = plan.get("content", {})
-    title = content.get('title', 'N/A')
-    
-    plan_summary = f"Plan Title: {title}\nPlan Type: {plan.get('type', 'N/A')}"
-    return plan_summary
-
-
-def format_tasks_context(tasks: list) -> str:
-    """Formats the list of task objects into a readable string for the AI."""
-    if not tasks:
-        return "The user has no tasks scheduled for today."
-    
-    task_strings = []
-    for task in tasks:
-        status = "Completed" if task.get("completed") else "Pending"
-        task_strings.append(f"- {task['name']} (Status: {status})")
-        
-    return "Today's Tasks:\n" + "\n".join(task_strings)
-
-
-def format_document_context(docs: list) -> str:
-    """Formats the retrieved document chunks into a readable string for the AI."""
-    if not docs:
-        return "No relevant information found in the user's documents for this query."
-    
-    context_strings = []
-    for doc in docs:
-        context_strings.append(f"From document '{doc['filename']}':\n---\n{doc['content']}\n---")
-        
-    return "\n\n".join(context_strings)
-
-
+# (The utility functions for listing sessions and getting history remain the same)
 @router.get(
     "/sessions",
     response_model=List[ChatSession],
@@ -93,30 +57,26 @@ async def get_chat_history(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid session ID format.")
 
-    # Security check: Verify the session belongs to the logged-in user.
     session_meta = await db[CHAT_SESSIONS_COLLECTION].find_one(
         {"_id": session_obj_id, "user_id": str(current_user.id)}
     )
     if not session_meta:
         raise HTTPException(status_code=404, detail="Chat session not found or permission denied.")
 
-    # Fetch history using LangChain's helper
     history = MongoDBChatMessageHistory(
         connection_string=settings.MONGODB_URI,
         session_id=session_id,
         database_name=settings.DB_NAME,
         collection_name=CHAT_HISTORIES_COLLECTION,
     )
-    # The `messages` property contains a list of BaseMessage objects.
-    # FastAPI's Pydantic integration will serialize them to JSON.
     return history.messages
 
-
+# --- REFACTORED CHAT ENDPOINT ---
 @router.post(
     "/",
     response_model=ChatResponse,
     status_code=status.HTTP_200_OK,
-    summary="Send a message to the chatbot"
+    summary="Send a message to the AI Coach"
 )
 async def chat_with_agent(
     chat_request: ChatRequest,
@@ -124,61 +84,75 @@ async def chat_with_agent(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Handles a user's message.
-    - If `session_id` is provided, continues the conversation.
-    - If `session_id` is null, creates a new chat session.
-    - Retrieves RAG context and gets a response from the chat agent.
-    - Returns the agent's response and the active `session_id`.
+    Handles a user's message using the new LangGraph-based AI Coach agent.
+    It manages session history and orchestrates complex, multi-step responses.
     """
+
     user_id_str = str(current_user.id)
     session_id = chat_request.session_id
 
+    user_data = await db[USER_DATA_COLLECTION].find(
+        {"user_id": str(current_user.id)}
+    )
+
+    plan = await db[PLANS_COLLECTION].find(
+        {"user_id": str(current_user.id)}
+    )
+
+    tasks = await db[TASKS_COLLECTION].find(
+        {"user_id": str(current_user.id)}
+    )
+
+    # --- Session Management (Unchanged) ---
     if not session_id:
-        # Start a new session
-        title = " ".join(chat_request.message.split()[:5])
-        if not title: title = "New Chat"
-        
-        new_session_doc = {
-            "user_id": user_id_str,
-            "title": title,
-            "created_at": datetime.now(timezone.utc)
-        }
+        title = " ".join(chat_request.message.split()[:5]) or "New Chat"
+        new_session_doc = {"user_id": user_id_str, "title": title, "created_at": datetime.now(timezone.utc)}
         result = await db[CHAT_SESSIONS_COLLECTION].insert_one(new_session_doc)
         session_id = str(result.inserted_id)
     else:
-        # Validate existing session
         try:
             session_obj_id = ObjectId(session_id)
+            session_meta = await db[CHAT_SESSIONS_COLLECTION].find_one({"_id": session_obj_id, "user_id": user_id_str})
+            if not session_meta:
+                raise HTTPException(status_code=403, detail="Access to this chat session is forbidden.")
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid session ID format.")
-        
-        session_meta = await db[CHAT_SESSIONS_COLLECTION].find_one(
-            {"_id": session_obj_id, "user_id": user_id_str}
-        )
-        if not session_meta:
-            raise HTTPException(status_code=403, detail="Access to this chat session is forbidden.")
-        
-    # --- RAG: Retrieve Context ---
-    latest_plan = await db[PLAN_COLLECTION].find_one({"user_id": user_id_str}, sort=[("created_at", -1)])
-    plan_context = format_plan_context(latest_plan)
 
-    today = datetime.now(timezone.utc).date()
-    start_of_day = datetime.combine(today, time.min, tzinfo=timezone.utc)
-    end_of_day = datetime.combine(today, time.max, tzinfo=timezone.utc)
-    tasks_cursor = db[TASK_COLLECTION].find({"user_id": user_id_str, "task_date": {"$gte": start_of_day, "$lte": end_of_day}})
-    todays_tasks = await tasks_cursor.to_list(length=None)
-    tasks_context = format_tasks_context(todays_tasks)
-
-    retrieved_docs = await query_vector_store(user_id_str, chat_request.message)
-    document_context = format_document_context(retrieved_docs)
+    # --- NEW: Invoke the LangGraph Agent ---
     
-    # --- Get Agent Response ---
-    agent_response_content = await get_chat_response(
-        user_input=chat_request.message,
-        session_id=session_id,
-        plan_context=plan_context,
-        tasks_context=tasks_context,
-        document_context=document_context
+    # 1. Get chat history
+    history = MongoDBChatMessageHistory(
+        connection_string=settings.MONGODB_URI, session_id=session_id,
+        database_name=settings.DB_NAME, collection_name=CHAT_HISTORIES_COLLECTION,
     )
 
-    return ChatResponse(response=agent_response_content, session_id=session_id)
+    # 2. Prepare the initial state for the graph
+    initial_state = {
+        "user_id": user_id_str,
+        "input": chat_request.message,
+        "chat_history": history.messages,
+        "user_data": user_data,
+        "plan": plan,
+        "tasks": tasks,
+        "notifications_to_send": [], # Initialize as empty
+        "rag_context": "" # Initialize as empty
+    }
+    
+    # 3. Asynchronously invoke the graph
+    config = {"configurable": {"session_id": session_id}} # This might be useful for LangServe later
+    final_state = await coach_agent_graph.ainvoke(initial_state, config=config)
+    
+    agent_response = final_state.get("response", "I'm sorry, I encountered an issue and can't respond right now.")
+
+    # 4. Manually update history (LangGraph doesn't auto-manage it like RunnableWithMessageHistory)
+    history.add_user_message(chat_request.message)
+    history.add_ai_message(agent_response)
+
+    # 5. TODO: Trigger any notifications the agent decided to send
+    if final_state.get('notifications_to_send'):
+        # from app.tasks import send_push_notification
+        # for notification in final_state['notifications_to_send']:
+        #     send_push_notification.delay(user_id=user_id_str, message=notification['message'])
+        pass
+        
+    return ChatResponse(response=agent_response, session_id=session_id)
