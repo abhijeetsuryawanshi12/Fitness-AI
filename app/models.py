@@ -156,7 +156,7 @@ class Task(BaseModel):
     plan_id: str
     task_date: datetime
     name: str = Field(..., description="The name/title of the task, e.g., 'Bench Press' or 'Breakfast'.")
-    details: Dict[str, Any] = Field(..., description="A dictionary containing detailed information about the task, such as exercises (sets, reps) or meal nutrition.")
+    details: Union[Dict[str, Any], str] = Field(..., description="A dictionary containing detailed task info OR a simple string description.")
     type: Literal["workout", "diet"]
     completed: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

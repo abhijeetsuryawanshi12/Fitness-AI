@@ -1,3 +1,4 @@
+# app/routes/chat.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
@@ -9,18 +10,21 @@ from bson import ObjectId
 from app.config import settings
 from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
 
-# --- NEW: Import the LangGraph agent ---
-from app.graphs.coach_agent import coach_agent_graph
+# --- Import the LangGraph agent and its state definition ---
+from app.graphs.coach_agent import coach_agent_graph, AgentState
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 CHAT_SESSIONS_COLLECTION = "chat_sessions"
 CHAT_HISTORIES_COLLECTION = "chat_histories"
-USER_DATA_COLLECTION = "users"
-PLANS_COLLECTION = "plans"
-TASKS_COLLECTION = "tasks"
 
-# (The utility functions for listing sessions and getting history remain the same)
+# --- NEW: Simple In-Memory Session State Cache ---
+# This dictionary will store state between user messages for a given session.
+# In a production environment with multiple server instances,
+# this should be replaced with a persistent key-value store like Redis.
+session_state_cache = {}
+
+
 @router.get(
     "/sessions",
     response_model=List[ChatSession],
@@ -71,7 +75,7 @@ async def get_chat_history(
     )
     return history.messages
 
-# --- REFACTORED CHAT ENDPOINT ---
+
 @router.post(
     "/",
     response_model=ChatResponse,
@@ -87,23 +91,10 @@ async def chat_with_agent(
     Handles a user's message using the new LangGraph-based AI Coach agent.
     It manages session history and orchestrates complex, multi-step responses.
     """
-
     user_id_str = str(current_user.id)
     session_id = chat_request.session_id
 
-    user_data = await db[USER_DATA_COLLECTION].find(
-        {"user_id": str(current_user.id)}
-    )
-
-    plan = await db[PLANS_COLLECTION].find(
-        {"user_id": str(current_user.id)}
-    )
-
-    tasks = await db[TASKS_COLLECTION].find(
-        {"user_id": str(current_user.id)}
-    )
-
-    # --- Session Management (Unchanged) ---
+    # --- Session Management ---
     if not session_id:
         title = " ".join(chat_request.message.split()[:5]) or "New Chat"
         new_session_doc = {"user_id": user_id_str, "title": title, "created_at": datetime.now(timezone.utc)}
@@ -118,7 +109,7 @@ async def chat_with_agent(
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid session ID format.")
 
-    # --- NEW: Invoke the LangGraph Agent ---
+    # --- LangGraph Agent Invocation with State Management ---
     
     # 1. Get chat history
     history = MongoDBChatMessageHistory(
@@ -127,32 +118,41 @@ async def chat_with_agent(
     )
 
     # 2. Prepare the initial state for the graph
-    initial_state = {
+    initial_state: AgentState = {
         "user_id": user_id_str,
         "input": chat_request.message,
         "chat_history": history.messages,
-        "user_data": user_data,
-        "plan": plan,
-        "tasks": tasks,
-        "notifications_to_send": [], # Initialize as empty
-        "rag_context": "" # Initialize as empty
+        "user_profile": {}, "plan": {}, "tasks": [], "rag_context": "", "response": "",
+        "pending_suggestion": None,
     }
-    
+
+    # **MODIFIED**: Load persistent state from our cache for this session
+    if session_id in session_state_cache:
+        cached_state = session_state_cache.get(session_id, {})
+        initial_state.update(cached_state)
+        print(f"Loaded state from cache for session {session_id}: {cached_state}")
+
     # 3. Asynchronously invoke the graph
-    config = {"configurable": {"session_id": session_id}} # This might be useful for LangServe later
+    config = {"recursion_limit": 50}
     final_state = await coach_agent_graph.ainvoke(initial_state, config=config)
     
     agent_response = final_state.get("response", "I'm sorry, I encountered an issue and can't respond right now.")
 
-    # 4. Manually update history (LangGraph doesn't auto-manage it like RunnableWithMessageHistory)
+    # 4. Manually update history
     history.add_user_message(chat_request.message)
     history.add_ai_message(agent_response)
 
-    # 5. TODO: Trigger any notifications the agent decided to send
-    if final_state.get('notifications_to_send'):
-        # from app.tasks import send_push_notification
-        # for notification in final_state['notifications_to_send']:
-        #     send_push_notification.delay(user_id=user_id_str, message=notification['message'])
-        pass
+    # **MODIFIED**: Save or clear the relevant state back to the cache
+    if final_state.get("pending_suggestion"):
+        # If the graph ended with a pending suggestion, save it.
+        session_state_cache[session_id] = {
+            "pending_suggestion": final_state["pending_suggestion"]
+        }
+        print(f"Saved state to cache for session {session_id}: {session_state_cache[session_id]}")
+    elif session_id in session_state_cache:
+        # If the graph ended and there's NO pending suggestion, it means the
+        # suggestion was either used or cancelled. Clean up the cache.
+        del session_state_cache[session_id]
+        print(f"Cleared cached state for session {session_id}")
         
     return ChatResponse(response=agent_response, session_id=session_id)

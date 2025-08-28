@@ -15,12 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 
-# --- START: Imports for running as a script with DB connection ---
-# These imports will now work because we will run this file as a module
 from app.config import settings
-# We will create our own client for the test script
-# --- END: Imports ---
-
 
 # Load environment variables from .env file
 load_dotenv()
@@ -166,7 +161,6 @@ prompt_template = ChatPromptTemplate.from_template(
 output_parser = JsonOutputParser(pydantic_object=FullPlan)
 plan_chain = prompt_template | llm | output_parser
 
-# Main function - no changes needed
 async def generate_one_day_plan(
     user: dict,
     plan_id: str,
@@ -174,7 +168,6 @@ async def generate_one_day_plan(
     db: AsyncIOMotorDatabase,
     suggestion: str
 ) -> Dict:
-    # This function is correct and ready to be called
     def format_list(items):
         return ", ".join(items) if items else "None"
 
@@ -209,33 +202,51 @@ async def generate_one_day_plan(
 
     print(f"Generating one-day plan for user: {inputs['name']}")
     plan_content = await plan_chain.ainvoke(inputs)
+
+    # --- START: ROBUSTNESS FIX ---
+    # The parser might return a dict if validation fails, or a Pydantic model if it succeeds.
+    # We will handle both cases to ensure plan_content_dict is always a dictionary.
+    plan_content_dict = {}
+    if hasattr(plan_content, 'model_dump'):
+        # It's a Pydantic model, so we dump it to a dict
+        plan_content_dict = plan_content.model_dump()
+    elif isinstance(plan_content, dict):
+        # It's already a dictionary
+        plan_content_dict = plan_content
+    else:
+        # Unexpected type, raise an error to avoid further issues
+        raise TypeError(f"The plan generation chain returned an unexpected type: {type(plan_content)}")
+    # --- END: ROBUSTNESS FIX ---
+    
     tasks_to_create = []
     today = datetime.now(timezone.utc)
     task_datetime = datetime.combine(today.date(), datetime.min.time(), tzinfo=timezone.utc)
-    day_plan_data = plan_content["day_plan"]
+    
+    # Use the guaranteed dictionary and .get() for safe access
+    day_plan_data = plan_content_dict.get("day_plan", {})
 
     user_id = user["_id"]
 
     if request_type in ["workout", "workout and diet"]:
-        for exercise in day_plan_data["exercises"]:
+        for exercise in day_plan_data.get("exercises", []):
             task_model = Task(
-                user_id=user_id,
+                user_id=str(user_id), # Ensure user_id is a string
                 plan_id=plan_id,
                 task_date=task_datetime,
                 name=exercise["name"],
-                details=exercise["instructions"],
+                details=exercise, # The whole exercise dict is the details
                 type="workout",
             )
             tasks_to_create.append(task_model.model_dump(by_alias=True))
 
     if request_type in ["diet", "workout and diet"]:
-        for meal in day_plan_data["meals"]:
+        for meal in day_plan_data.get("meals", []):
             task_model = Task(
-                user_id=user_id,
+                user_id=str(user_id), # Ensure user_id is a string
                 plan_id=plan_id,
                 task_date=task_datetime,
                 name=meal["meal_name"],
-                details=meal["nutrition_facts"],
+                details=meal, # The whole meal dict is the details
                 type="diet",
             )
             tasks_to_create.append(task_model.model_dump(by_alias=True))
@@ -250,65 +261,6 @@ async def generate_one_day_plan(
                 status_code=500,
                 detail="Plan was generated, but failed to create associated tasks."
             )
-    return plan_content.model_dump()
-
-
-# --- START: MODIFIED TEST FUNCTION ---
-async def test():
-    """
-    This function now connects to the REAL MongoDB database,
-    generates a plan, and stores the tasks.
-    """
-    print("--- Starting Test with REAL Database Connection ---")
     
-    # Manually create a database client for this test script
-    # It reads the MONGO_URI from your settings.py file
-    client = AsyncIOMotorClient(settings.MONGODB_URI)
-    db = client[settings.DB_NAME] # Assumes MONGO_DB_NAME is in your settings
-    
-    try:
-        user = {
-            "name": "John Doe (Test)",
-            "age": 28, "gender": "Male", "height": 178, "weight": 75,
-            "profession": "Software Engineer", "primary_goal": "Lose fat and improve stamina",
-            "goal_deadline": "2025-12-31", "workout_time_minutes": 45,
-            "preferred_workout_time": "Morning", "workout_experience": "Beginner",
-            "medical_conditions": ["None"], "injuries": ["None"], "energy_level": 3,
-            "sleep_quality": 5, "diet_type": "Vegetarian", "diet_type_other": "",
-            "meals_per_day": 3, "smoking_habit": "No",
-            "alcohol_consumption": "Occasional", "favorite_foods": ["Pasta", "Salad"]
-        }
-
-        # Generate dummy IDs for the test
-        user_id = str(ObjectId())
-        plan_id = str(ObjectId())
-
-        print(f"Test User ID: {user_id}")
-        print(f"Test Plan ID: {plan_id}")
-
-        # Call the main function with all necessary arguments
-        generated_plan = await generate_one_day_plan(
-            user=user,
-            user_id=user_id,
-            plan_id=plan_id,
-            request_type="workout and diet", # Test creating both task types
-            db=db,
-            suggestion="tired"
-        )
-        
-        print("\n--- Plan Generation and DB Insertion Complete ---")
-        print("Generated Plan Content:")
-        print(json.dumps(generated_plan, indent=2))
-        print(f"\nTasks for plan {plan_id} should now be stored in your '{settings.MONGO_DB_NAME}' database in the 'tasks' collection.")
-
-    except Exception as e:
-        print(f"\nAn error occurred during the test: {e}")
-    finally:
-        # IMPORTANT: Close the database connection
-        client.close()
-        print("\n--- Database Connection Closed ---")
-
-# This allows you to run the test from the command line
-if __name__ == "__main__":
-    asyncio.run(test())
-# --- END: MODIFIED TEST FUNCTION ---
+    # Return the dictionary version of the plan content
+    return plan_content_dict
