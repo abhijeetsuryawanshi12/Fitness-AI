@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react'
-import { createPortal } from "react-dom";
-import { 
-  Activity, 
-  Target, 
-  Droplets, 
-  Moon, 
-  Dumbbell, 
-  TrendingUp, 
-  CheckCircle2, 
-  MessageSquare, 
+import { useEffect, useState } from 'react';
+import {
+  Activity,
+  Target,
+  Droplets,
+  Moon,
+  Dumbbell,
+  TrendingUp,
+  CheckCircle2,
+  MessageSquare,
   Award,
   Users,
   Heart,
@@ -16,16 +15,14 @@ import {
   Brain,
   Clock,
   ChevronDown
-} from 'lucide-react'
+} from 'lucide-react';
+import api from '@/lib/api'; // Using the real API client
 
-// Mock API with time period data
-const api = {
+// NOTE: Using a mock API for detailed metrics as the backend endpoints (/metrics/*) are not yet available.
+// This preserves the original dashboard's visual structure.
+const mockMetricsApi = {
   get: (endpoint) => {
     const mockData = {
-      '/profile/me': { data: { name: 'Abhijeet', email: 'abhijeet@example.com', streak: 12 } },
-      '/tasks/today': { data: Array.from({ length: 6 }, (_, i) => ({ id: i, title: `Task ${i + 1}`, completed: i < 3 })) },
-      '/': { data: { message: 'Online' } },
-      // Time period data for metrics
       '/metrics/calories': {
         data: {
           daily: { value: 2850, progress: 68 },
@@ -66,31 +63,10 @@ const timePeriods = [
   { value: 'monthly', label: 'This Month', shortLabel: 'Month' }
 ]
 
-// Animation variants
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.2
-    }
-  }
-}
-
-const itemVariants = {
-  hidden: { y: 20, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1,
-    transition: { duration: 0.5, ease: "easeOut" }
-  }
-}
-
 // Animated Counter Component
 function AnimatedCounter({ value, duration = 1000 }) {
   const [count, setCount] = useState(0)
-  
+
   useEffect(() => {
     let start = 0
     const end = parseFloat(value)
@@ -98,12 +74,12 @@ function AnimatedCounter({ value, duration = 1000 }) {
       setCount(value);
       return;
     }
-    
+
     let totalMilSecDur = parseInt(duration, 10)
     let incrementTime = Math.max(1, totalMilSecDur / Math.abs(end - start))
-    
+
     let timer = setInterval(() => {
-      start += end > 10 ? Math.ceil(end/100) : 0.1
+      start += end > 10 ? Math.ceil(end / 100) : 0.1
       if (start >= end) {
         setCount(end);
         clearInterval(timer);
@@ -111,14 +87,14 @@ function AnimatedCounter({ value, duration = 1000 }) {
         setCount(parseFloat(start.toFixed(1)));
       }
     }, incrementTime)
-    
+
     return () => clearInterval(timer)
   }, [value, duration])
-  
+
   return <span>{count}</span>
 }
 
-// Time Period Dropdown Component with enhanced styling
+// Time Period Dropdown Component
 function TimePeriodDropdown({ selectedPeriod, onPeriodChange, className = '' }) {
   const [isOpen, setIsOpen] = useState(false)
   const selectedOption = timePeriods.find(p => p.value === selectedPeriod)
@@ -142,18 +118,17 @@ function TimePeriodDropdown({ selectedPeriod, onPeriodChange, className = '' }) 
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute top-full mt-2 right-0 z-20 bg-slate-800 border border-white/20 rounded-xl shadow-2xl overflow-hidden min-w-40 backdrop-blur-md">
-            {timePeriods.map((period, index) => (
+            {timePeriods.map((period) => (
               <button
                 key={period.value}
                 onClick={() => {
                   onPeriodChange(period.value)
                   setIsOpen(false)
                 }}
-                className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center space-x-3 hover:bg-blue-500/20 ${
-                  selectedPeriod === period.value
+                className={`w-full px-4 py-3 text-left text-sm transition-colors flex items-center space-x-3 hover:bg-blue-500/20 ${selectedPeriod === period.value
                     ? 'text-blue-300 bg-blue-500/20 border-l-2 border-blue-400'
                     : 'text-white hover:text-blue-300'
-                }`}
+                  }`}
               >
                 <span className="flex-1">{period.label}</span>
                 {selectedPeriod === period.value && (
@@ -175,7 +150,7 @@ function ProgressRing({ progress, size = 120, strokeWidth = 8, color = "rgb(59, 
   const offset = circumference - (progress / 100) * circumference
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
         <circle
           cx={size / 2}
@@ -207,22 +182,19 @@ function ProgressRing({ progress, size = 120, strokeWidth = 8, color = "rgb(59, 
   )
 }
 
-// Enhanced Metric Card Component
+// Metric Card Component
 function MetricCard({ icon: Icon, title, value, unit, color, progress, loading }) {
   return (
     <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden group transform hover:scale-102 hover:-translate-y-1 transition-all duration-300">
-      {/* Colored Header Section */}
       <div className={`p-4 bg-gradient-to-r ${color} relative overflow-hidden`}>
         <div className="flex items-center justify-between relative z-10">
           <Icon className="w-7 h-7 text-white" />
           <TrendingUp className="w-5 h-5 text-white/70 group-hover:text-white transition-colors" />
         </div>
-        {/* Subtle pattern overlay */}
-        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" 
-             style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, transparent 30%, rgba(255,255,255,0.1) 100%)' }} />
+        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, transparent 30%, rgba(255,255,255,0.1) 100%)' }} />
       </div>
-      
-      {/* Card Body */}
+
       <div className="p-4 space-y-3">
         <div>
           <div className="flex items-baseline space-x-2">
@@ -239,7 +211,7 @@ function MetricCard({ icon: Icon, title, value, unit, color, progress, loading }
           </div>
           <p className="text-slate-400 text-sm">{title}</p>
         </div>
-        
+
         {!loading && progress !== undefined && (
           <div>
             <div className="w-full bg-white/10 rounded-full h-1.5">
@@ -259,7 +231,7 @@ function MetricCard({ icon: Icon, title, value, unit, color, progress, loading }
   )
 }
 
-// General Card Component for consistent styling
+// General Card Component
 function ThemedCard({ children, className = '' }) {
   return (
     <div className={`bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 ${className}`}>
@@ -270,7 +242,7 @@ function ThemedCard({ children, className = '' }) {
 
 // AI Chat Panel
 function AIChatPanel() {
-  const [messages, setMessages] = useState([
+  const [messages] = useState([
     { type: 'ai', content: "Good morning! Ready for today's workout? I've prepared a custom plan based on your progress." },
     { type: 'suggestion', content: 'Suggested workout: Upper Body Strength (45 min)', action: 'View Plan' }
   ])
@@ -284,17 +256,15 @@ function AIChatPanel() {
         <h3 className="text-lg font-semibold text-white">AI Fitness Coach</h3>
         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
       </div>
-      
+
       <div className="space-y-3 mb-4">
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`p-3 rounded-xl text-sm opacity-0 animate-fadeIn ${
-              msg.type === 'ai' 
-                ? 'bg-white/5 text-slate-200' 
+            className={`p-3 rounded-xl text-sm animate-fadeIn ${msg.type === 'ai'
+                ? 'bg-white/5 text-slate-200'
                 : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white'
-            }`}
-            style={{ animationDelay: `${idx * 0.2}s`, animationFillMode: 'forwards' }}
+              }`}
           >
             {msg.content}
             {msg.action && (
@@ -305,7 +275,7 @@ function AIChatPanel() {
           </div>
         ))}
       </div>
-      
+
       <div className="flex space-x-2">
         <input
           type="text"
@@ -332,25 +302,23 @@ function TaskTracker({ tasks }) {
         <h3 className="text-lg font-semibold text-white">Today's Tasks</h3>
         <div className="text-sm text-slate-400">{completedTasks}/{totalTasks}</div>
       </div>
-      
+
       <div className="flex items-center justify-center mb-6">
         <ProgressRing progress={Math.round(progress)} size={100} color="rgb(34, 197, 94)" />
       </div>
-      
+
       <div className="space-y-3">
         {tasks?.slice(0, 4).map((task, idx) => (
           <div
-            key={task.id}
-            className={`flex items-center space-x-3 p-3 rounded-xl transition-all opacity-0 animate-fadeIn ${
-              task.completed ? 'bg-green-500/20' : 'bg-white/5 hover:bg-white/10'
-            }`}
-            style={{ animationDelay: `${idx * 0.1}s`, animationFillMode: 'forwards' }}
+            key={task._id}
+            className={`flex items-center space-x-3 p-3 rounded-xl transition-all animate-fadeIn ${task.completed ? 'bg-green-500/20' : 'bg-white/5 hover:bg-white/10'
+              }`}
           >
             <div className="transform hover:scale-110 transition-transform">
               <CheckCircle2 className={`w-5 h-5 ${task.completed ? 'text-green-400' : 'text-slate-600'}`} />
             </div>
             <span className={`flex-1 text-sm ${task.completed ? 'text-green-300 line-through' : 'text-slate-300'}`}>
-              {task.title}
+              {task.name}
             </span>
           </div>
         ))}
@@ -363,15 +331,13 @@ function TaskTracker({ tasks }) {
 function AchievementBadge({ icon: Icon, title, description, unlocked = false }) {
   return (
     <div
-      className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
-        unlocked 
-          ? 'border-yellow-400/50 bg-yellow-500/10 hover:rotate-1' 
+      className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${unlocked
+          ? 'border-yellow-400/50 bg-yellow-500/10 hover:rotate-1'
           : 'border-white/20 bg-slate-800/50'
-      }`}
+        }`}
     >
-      <div className={`p-2 rounded-lg inline-block mb-2 ${
-        unlocked ? 'bg-gradient-to-br from-yellow-400 to-orange-500' : 'bg-slate-700'
-      }`}>
+      <div className={`p-2 rounded-lg inline-block mb-2 ${unlocked ? 'bg-gradient-to-br from-yellow-400 to-orange-500' : 'bg-slate-700'
+        }`}>
         <Icon className={`w-4 h-4 ${unlocked ? 'text-white' : 'text-slate-400'}`} />
       </div>
       <h4 className={`text-sm font-semibold mb-1 ${unlocked ? 'text-white' : 'text-slate-400'}`}>
@@ -388,7 +354,7 @@ function AchievementBadge({ icon: Icon, title, description, unlocked = false }) 
 function ServerStatus() {
   const [status, setStatus] = useState('Connecting...')
   const [isOnline, setIsOnline] = useState(false)
-  
+
   useEffect(() => {
     api.get('/').then(r => {
       setStatus(r.data?.message || 'Online')
@@ -407,7 +373,7 @@ function ServerStatus() {
   )
 }
 
-// Enhanced Metrics Section Component
+// Metrics Section Component
 function MetricsSection() {
   const [selectedPeriod, setSelectedPeriod] = useState('weekly')
   const [metricsData, setMetricsData] = useState({
@@ -422,11 +388,11 @@ function MetricsSection() {
       setLoading(true)
       try {
         const [caloriesRes, workoutsRes, hoursRes] = await Promise.all([
-          api.get('/metrics/calories'),
-          api.get('/metrics/workouts'), 
-          api.get('/metrics/hours')
+          mockMetricsApi.get('/metrics/calories'),
+          mockMetricsApi.get('/metrics/workouts'),
+          mockMetricsApi.get('/metrics/hours')
         ])
-        
+
         setMetricsData({
           calories: caloriesRes.data[selectedPeriod] || { value: 0, progress: 0 },
           workouts: workoutsRes.data[selectedPeriod] || { value: 0, progress: 0 },
@@ -451,17 +417,14 @@ function MetricsSection() {
   const getPeriodTitle = (baseTitle, period) => {
     const periodMap = {
       daily: "Today's",
-      weekly: "This Week's", 
+      weekly: "This Week's",
       monthly: "This Month's"
     }
     return `${periodMap[period]} ${baseTitle}`
   }
 
   return (
-    // THE FIX: Added 'relative' to establish a positioning context 
-    // and 'z-20' to lift this entire section above the elements that follow it.
     <div className="relative z-20">
-      {/* Section Header with Global Time Period Selector */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-white flex items-center">
           <Activity className="w-6 h-6 mr-3 text-blue-400" />
@@ -469,7 +432,7 @@ function MetricsSection() {
         </h2>
         <div className="flex items-center space-x-4">
           <span className="text-slate-400 text-sm">View data for:</span>
-          <TimePeriodDropdown 
+          <TimePeriodDropdown
             selectedPeriod={selectedPeriod}
             onPeriodChange={setSelectedPeriod}
             className="scale-110"
@@ -477,7 +440,6 @@ function MetricsSection() {
         </div>
       </div>
 
-      {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 z-10">
         <MetricCard
           icon={Target}
@@ -518,19 +480,19 @@ export default function Dashboard() {
   useEffect(() => {
     async function load() {
       try {
-        const [{ data: me }, { data: tasks }] = await Promise.all([
+        const [{ data: me }, { data: tasksData }] = await Promise.all([
           api.get('/profile/me'),
           api.get('/tasks/today')
         ])
         setUserData({
           name: me.name || me.email.split('@')[0],
           streak: me.streak ?? 0,
-          tasks: tasks || []
+          tasks: tasksData || []
         })
-      } catch (error) { 
-        console.error('Failed to load dashboard data:', error) 
-      } finally { 
-        setLoading(false) 
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error)
+      } finally {
+        setLoading(false)
       }
     }
     load()
@@ -546,49 +508,40 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-8 opacity-0 animate-fadeIn" style={{ animationFillMode: 'forwards' }}>
-        {/* Enhanced Hero Section with Streak */}
+      <div className="max-w-7xl mx-auto space-y-8 opacity-0 animate-fadeIn">
         <ThemedCard className="relative overflow-hidden">
-          {/* Background decoration */}
           <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-indigo-900/20" />
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full blur-3xl transform translate-x-32 -translate-y-32" />
-          
+
           <div className="relative z-10">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              {/* Welcome Message */}
               <div className="flex-1">
                 <h1 className="text-4xl lg:text-5xl font-bold mb-3 text-white">
-                  Welcome back{userData.name ? `, ${userData.name}` : ''}! 🎯
+                  Welcome back, {userData.name}!
                 </h1>
                 <p className="text-slate-300 text-lg mb-6">
                   You're crushing your fitness goals! Keep up the momentum.
                 </p>
-                
                 <div className="flex items-center space-x-6">
                   <ServerStatus />
                 </div>
               </div>
 
-              {/* Streak Section */}
               <div className="flex-shrink-0">
                 <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-6 text-center relative overflow-hidden shadow-2xl">
-                  {/* Background pattern */}
-                  <div className="absolute inset-0 bg-white/10 opacity-20" 
-                       style={{ backgroundImage: 'radial-gradient(circle at 25% 25%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%), radial-gradient(circle at 75% 75%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%)' }} />
-                  
+                  <div className="absolute inset-0 bg-white/10 opacity-20"
+                    style={{ backgroundImage: 'radial-gradient(circle at 25% 25%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%), radial-gradient(circle at 75% 75%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%)' }} />
+
                   <div className="relative z-10">
                     <div className="w-16 h-16 mx-auto mb-3 animate-spin-slow">
                       <Flame className="w-full h-full text-white drop-shadow-lg" />
                     </div>
-                    
                     <div className="text-4xl font-bold text-white mb-1">
                       {userData.streak}
                     </div>
-                    
                     <div className="text-orange-100 font-medium text-sm uppercase tracking-wider">
                       Day Streak
                     </div>
-                    
                     <div className="mt-2 text-xs text-orange-200 animate-pulse">
                       🔥 On Fire!
                     </div>
@@ -599,10 +552,8 @@ export default function Dashboard() {
           </div>
         </ThemedCard>
 
-        {/* Metrics Section */}
         <MetricsSection />
 
-        {/* Main Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <AIChatPanel />
@@ -612,7 +563,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Progress Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <ThemedCard>
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
@@ -641,7 +591,6 @@ export default function Dashboard() {
           </ThemedCard>
         </div>
 
-        {/* Achievements */}
         <div>
           <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
             <Award className="w-6 h-6 mr-3 text-yellow-400" />
@@ -655,21 +604,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        
-        .animate-fadeIn { animation: fadeIn 0.6s ease-out; }
-        .animate-spin-slow { animation: spin-slow 20s linear infinite; }
-      `}</style>
     </div>
   )
 }

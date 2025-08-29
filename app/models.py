@@ -127,6 +127,16 @@ class UserUpdate(BaseModel):
     alcohol_consumption: Optional[Literal["None", "Light", "Moderate", "Heavy"]] = None
     favorite_foods: Optional[List[str]] = None
 
+    @model_validator(mode='after')
+    def validate_diet_type(self) -> 'UserUpdate':
+        # This validator ensures data consistency when updating.
+        if self.diet_type == "Other" and self.diet_type_other is None:
+            raise ValueError('If diet_type is "Other", diet_type_other must be specified.')
+        if self.diet_type and self.diet_type != "Other" and self.diet_type_other is not None:
+            # If they change diet type away from 'Other', clear the 'other' field.
+            self.diet_type_other = None
+        return self
+
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
         json_encoders={datetime: lambda v: v.isoformat(), date: lambda v: v.isoformat()}
