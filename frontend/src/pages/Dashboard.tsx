@@ -16,7 +16,20 @@ import {
   Clock,
   ChevronDown
 } from 'lucide-react';
-import api from '@/lib/api'; // Using the real API client
+import api from '@/lib/api';
+
+// --- IMPORT THE PRISM COMPONENT ---
+import Prism from '@/components/react_bits/Prism';
+
+// --- IMPORT THE GRADIENT BLINDS COMPONENT ---
+import GradientBlinds from '@/components/react_bits/GradientBlinds';
+
+import PrismaticBurst from '@/components/react_bits/PrismaticBurst';
+
+import Squares from '@/components/react_bits/Squares';
+
+// --- IMPORT THE BLUR TEXT COMPONENT ---
+import BlurText from '@/components/react_bits/BlurText';
 
 // NOTE: Using a mock API for detailed metrics as the backend endpoints (/metrics/*) are not yet available.
 // This preserves the original dashboard's visual structure.
@@ -507,8 +520,25 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 p-4 md:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto space-y-8 opacity-0 animate-fadeIn">
+    // --- CHANGE 1: Main container setup for layering ---
+    <div className="relative min-h-screen bg-slate-900 p-4 md:p-6 lg:p-8 overflow-hidden">
+      
+      {/* --- CHANGE 2: Prism background layer --- */}
+      <div className="absolute inset-0 z-0 opacity-50">
+        <Squares 
+          speed={0.5} 
+          squareSize={40}
+          direction='diagonal' // up, down, left, right, diagonal
+          borderColor='#fff'
+          hoverFillColor='#222'
+          />
+      </div>
+      
+      {/* --- CHANGE 3: Semi-transparent overlay for readability --- */}
+      <div className="absolute inset-0 z-10 bg-gradient-to-br from-slate-900/80 via-purple-900/20 to-slate-900/80" />
+
+      {/* --- CHANGE 4: Content layer on top --- */}
+      <div className="relative z-20 max-w-7xl mx-auto space-y-8 opacity-0 animate-fadeIn">
         <ThemedCard className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-indigo-900/20" />
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full blur-3xl transform translate-x-32 -translate-y-32" />
@@ -517,7 +547,12 @@ export default function Dashboard() {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div className="flex-1">
                 <h1 className="text-4xl lg:text-5xl font-bold mb-3 text-white">
-                  Welcome back, {userData.name}!
+                  <BlurText
+                    text={`Welcome back, ${userData.name}!`}
+                    delay={100}
+                    animateBy="words"
+                    direction="top"
+                  />
                 </h1>
                 <p className="text-slate-300 text-lg mb-6">
                   You're crushing your fitness goals! Keep up the momentum.

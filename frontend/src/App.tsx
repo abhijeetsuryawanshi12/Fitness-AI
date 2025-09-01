@@ -13,6 +13,9 @@ import Plan from './pages/Plan';
 import Progress from './pages/Progress';
 import { Dumbbell } from 'lucide-react';
 
+import Prism from './components/react_bits/Prism';
+
+
 function Logo() {
   return (
     <div className="flex items-center gap-3 p-4">
@@ -52,28 +55,49 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
-      <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
+    <div className="relative min-h-screen overflow-hidden">
+      {/* Background */}
+      {/* <div style={{ width: '100%', height: '600px', position: 'relative' }}>
+        <Prism
+          animationType="rotate"
+          timeScale={0.5}
+          height={3.5}
+          baseWidth={5.5}
+          scale={3.6}
+          hueShift={0}
+          colorFrequency={1}
+          noise={0.5}
+          glow={1}
+        />
+      </div> */}
 
-      {/* Onboarding route: requires authentication but has its own full-screen layout */}
-      <Route path="/onboarding" element={
-        <ProtectedRoute>
-          <Onboarding />
-        </ProtectedRoute>
-      } />
+      {/* Foreground (all routes) */}
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
+        <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
 
-      {/* Main application routes protected by the MainLayout */}
-      <Route element={<MainLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/tasks" element={<Tasks />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/plan" element={<Plan />} />
-        <Route path="/progress" element={<Progress />} />
-      </Route>
-    </Routes>
+        {/* Onboarding route */}
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <Onboarding />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Main application routes */}
+        <Route element={<MainLayout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/tasks" element={<Tasks />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/plan" element={<Plan />} />
+          <Route path="/progress" element={<Progress />} />
+        </Route>
+      </Routes>
+    </div>
   );
 }
