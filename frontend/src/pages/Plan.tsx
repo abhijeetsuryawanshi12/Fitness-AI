@@ -1,186 +1,47 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, Target, Dumbbell, Utensils, Play, CheckCircle, Circle, Download, Share2, Zap, TrendingUp, Award } from 'lucide-react'
-
-// Mock API for demonstration
-const mockApi = {
-  post: async (endpoint: string, data: any) => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    // Return the sample data from your JSON
-    return {
-      data: {
-        type: data.type,
-        content: {
-          "title": "7-Day Muscle Building Plan for Abhijeet Suryawanshi",
-          "daily_plan": [
-            {
-              "day": 1,
-              "theme": "Chest & Triceps",
-              "exercises": [
-                {
-                  "name": "Dumbbell Bench Press",
-                  "sets": 3,
-                  "reps": 8,
-                  "weights": [12.5, 12.5, 12.5],
-                  "instructions": "Lie on a bench with feet flat on the floor. Hold a dumbbell in each hand. Lower the dumbbells to your chest, keeping elbows slightly bent. Push the dumbbells back up to the starting position. Focus on controlled movements."
-                },
-                {
-                  "name": "Incline Dumbbell Press",
-                  "sets": 3,
-                  "reps": 8,
-                  "weights": [10, 10, 10],
-                  "instructions": "Lie on an incline bench with feet flat on the floor. Hold a dumbbell in each hand. Lower the dumbbells to your upper chest, keeping elbows slightly bent. Push the dumbbells back up to the starting position."
-                },
-                {
-                  "name": "Dumbbell Flyes",
-                  "sets": 3,
-                  "reps": 10,
-                  "weights": [7.5, 7.5, 7.5],
-                  "instructions": "Lie on a bench with feet flat on the floor. Hold a dumbbell in each hand, arms extended above your chest. Lower the dumbbells out to the sides in a wide arc, keeping a slight bend in your elbows."
-                }
-              ],
-              "meals": [
-                {
-                  "meal_name": "Breakfast",
-                  "nutrition_facts": {
-                    "calories": 450,
-                    "protein": 30,
-                    "carbs": 50,
-                    "total_fat": 15
-                  }
-                },
-                {
-                  "meal_name": "Lunch",
-                  "nutrition_facts": {
-                    "calories": 600,
-                    "protein": 40,
-                    "carbs": 60,
-                    "total_fat": 20
-                  }
-                },
-                {
-                  "meal_name": "Dinner",
-                  "nutrition_facts": {
-                    "calories": 550,
-                    "protein": 45,
-                    "carbs": 55,
-                    "total_fat": 18
-                  }
-                },
-                {
-                  "meal_name": "Snack",
-                  "nutrition_facts": {
-                    "calories": 200,
-                    "protein": 15,
-                    "carbs": 10,
-                    "total_fat": 10
-                  }
-                }
-              ]
-            },
-            {
-              "day": 2,
-              "theme": "Back & Biceps",
-              "exercises": [
-                {
-                  "name": "Dumbbell Rows",
-                  "sets": 3,
-                  "reps": 8,
-                  "weights": [15, 15, 15],
-                  "instructions": "Bend over at the waist, keeping your back straight. Hold a dumbbell in one hand. Pull the dumbbell up to your chest, keeping your elbow close to your body."
-                },
-                {
-                  "name": "Lat Pulldowns (Wide Grip)",
-                  "sets": 3,
-                  "reps": 8,
-                  "weights": [30, 30, 30],
-                  "instructions": "Sit at a lat pulldown machine. Grab the bar with a wide grip. Pull the bar down to your chest, squeezing your back muscles."
-                }
-              ],
-              "meals": [
-                {
-                  "meal_name": "Breakfast",
-                  "nutrition_facts": {
-                    "calories": 480,
-                    "protein": 32,
-                    "carbs": 55,
-                    "total_fat": 16
-                  }
-                },
-                {
-                  "meal_name": "Lunch",
-                  "nutrition_facts": {
-                    "calories": 620,
-                    "protein": 42,
-                    "carbs": 65,
-                    "total_fat": 21
-                  }
-                }
-              ]
-            },
-            {
-              "day": 3,
-              "theme": "Legs",
-              "exercises": [
-                {
-                  "name": "Bodyweight Squats",
-                  "sets": 3,
-                  "reps": 15,
-                  "weights": [0, 0, 0],
-                  "instructions": "Stand with your feet shoulder-width apart. Lower your body as if you are sitting in a chair, keeping your back straight."
-                }
-              ],
-              "meals": [
-                {
-                  "meal_name": "Breakfast",
-                  "nutrition_facts": {
-                    "calories": 460,
-                    "protein": 31,
-                    "carbs": 52,
-                    "total_fat": 15.5
-                  }
-                }
-              ]
-            },
-            {
-              "day": 4,
-              "theme": "Rest",
-              "exercises": [],
-              "meals": [
-                {
-                  "meal_name": "Breakfast",
-                  "nutrition_facts": {
-                    "calories": 440,
-                    "protein": 29,
-                    "carbs": 49,
-                    "total_fat": 14.5
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      }
-    }
-  }
-}
+import { Calendar, Clock, Target, Dumbbell, Utensils, Play, CheckCircle, Circle, Download, Share2, Zap, TrendingUp, Award, RefreshCw } from 'lucide-react'
+import api from '@/lib/api' // Import your actual API instance
 
 export default function Plan() {
   const [type, setType] = useState('workout and diet')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false) // For generation button
+  const [initialLoading, setInitialLoading] = useState(true) // For initial page load
   const [plan, setPlan] = useState(null)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedDay, setSelectedDay] = useState(1)
   const [completedExercises, setCompletedExercises] = useState(new Set())
 
+  // Fetch the latest plan when the component mounts
+  useEffect(() => {
+    async function fetchLatestPlan() {
+      try {
+        setError(null);
+        const { data } = await api.get('/plan/latest');
+        setPlan(data);
+        if (data?.content?.daily_plan?.[0]?.day) {
+          setSelectedDay(data.content.daily_plan[0].day);
+        }
+      } catch (err) {
+        // A 404 error is expected if the user has no plan, so we don't set an error state for it.
+        if (err.response?.status !== 404) {
+          setError('Could not fetch your existing plan.');
+        }
+      } finally {
+        setInitialLoading(false);
+      }
+    }
+    fetchLatestPlan();
+  }, []);
+
+  // Function to generate a new plan
   async function generate(e) {
     e.preventDefault()
     setLoading(true)
     setError(null)
     try {
-      const { data } = await mockApi.post('/plan/generate', { type })
+      // Use the real API endpoint
+      const { data } = await api.post('/plan/generate', { type })
       setPlan(data)
       setSelectedDay(1)
     } catch (err) {
@@ -189,6 +50,14 @@ export default function Plan() {
       setLoading(false)
     }
   }
+  
+  // Function to reset state and show the generation form again
+  const handleGenerateNew = () => {
+    setPlan(null);
+    setError(null);
+    setSelectedDay(1);
+    setActiveTab('overview');
+  };
 
   const toggleExerciseComplete = (exerciseId) => {
     const newCompleted = new Set(completedExercises)
@@ -212,7 +81,20 @@ export default function Plan() {
       fat: total.fat + (meal.nutrition_facts?.total_fat || 0),
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 })
   }
+  
+  // Initial loading state while checking for an existing plan
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+          <p className="text-lg">Checking for your fitness plan...</p>
+        </div>
+      </div>
+    );
+  }
 
+  // If no plan exists, show the generation form
   if (!plan) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
@@ -270,24 +152,25 @@ export default function Plan() {
     )
   }
 
+  // If a plan exists, display it
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div>
               <h1 className="text-4xl font-bold text-white mb-2">Your Fitness Plan</h1>
               <p className="text-slate-300">{plan.content.title}</p>
             </div>
             <div className="flex gap-3">
+              <button onClick={handleGenerateNew} className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-colors flex items-center gap-2">
+                <RefreshCw className="w-4 h-4" />
+                Generate New Plan
+              </button>
               <button className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-colors flex items-center gap-2">
                 <Download className="w-4 h-4" />
                 Export
-              </button>
-              <button className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-colors flex items-center gap-2">
-                <Share2 className="w-4 h-4" />
-                Share
               </button>
             </div>
           </div>
@@ -439,7 +322,7 @@ export default function Plan() {
                                 {exercise.sets} sets
                               </span>
                               <span>{exercise.reps} reps</span>
-                              {exercise.weights[0] > 0 && (
+                              {exercise.weights && exercise.weights[0] > 0 && (
                                 <span>{exercise.weights[0]}kg</span>
                               )}
                             </div>
@@ -501,7 +384,7 @@ export default function Plan() {
                         {Object.entries(getTotalNutrition(currentDay.meals)).map(([key, value]) => (
                           <div key={key} className="bg-white/5 rounded-xl p-4 text-center border border-white/10">
                             <div className="text-2xl font-bold text-white">{Math.round(value)}</div>
-                            <div className="text-slate-400 capitalize text-sm">{key === 'fat' ? 'Fat' : key}</div>
+                            <div className="text-slate-400 capitalize text-sm">{key === 'fat' ? 'Total Fat' : key}</div>
                           </div>
                         ))}
                       </div>

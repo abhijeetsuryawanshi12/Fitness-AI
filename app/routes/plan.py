@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from app.db import get_database
 from app.models import Plan, User, Task
@@ -13,8 +13,34 @@ from datetime import datetime, timedelta, timezone
 router = APIRouter(prefix="/plan", tags=["Plan Generation"])
 
 class GeneratePlanRequest(BaseModel):
-    # user_id is removed as it comes from the token
     type: Literal["workout", "diet", "workout and diet"]
+
+# --- NEW ENDPOINT ADDED HERE ---
+@router.get("/latest", response_model=Plan, summary="Get the user's most recent plan")
+async def get_latest_plan(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Retrieves the most recently created plan for the authenticated user.
+    """
+    user_id_str = str(current_user.id)
+    
+    # Find the latest plan by sorting by created_at in descending order
+    latest_plan_doc = await db.plans.find_one(
+        {"user_id": user_id_str},
+        sort=[("created_at", -1)]
+    )
+
+    if not latest_plan_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No plan found for the current user."
+        )
+    
+    return latest_plan_doc
+# --- END OF NEW ENDPOINT ---
+
 
 @router.post("/generate", response_model=Plan, status_code=status.HTTP_201_CREATED)
 async def generate_plan_endpoint(
@@ -69,7 +95,7 @@ async def generate_plan_endpoint(
         task_datetime = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=day_number - 1)
 
         # Create tasks for exercises if the plan type includes "workout"
-        if request.type in ["workout", "workout and diet"]:
+        if request.type in ["workout", "workout and diet"] and "exercises" in day_plan:
             for exercise in day_plan.get("exercises", []):
                 task_model = Task(
                     user_id=user_id_str,
@@ -83,7 +109,7 @@ async def generate_plan_endpoint(
                 tasks_to_create.append(task_model.model_dump(by_alias=True, exclude=["id"]))
 
         # Create tasks for meals if the plan type includes "diet"
-        if request.type in ["diet", "workout and diet"]:
+        if request.type in ["diet", "workout and diet"] and "meals" in day_plan:
             for meal in day_plan.get("meals", []):
                 task_model = Task(
                     user_id=user_id_str,
@@ -103,11 +129,9 @@ async def generate_plan_endpoint(
             print(f"Successfully created {len(tasks_to_create)} tasks for plan {new_plan_id}.")
         except Exception as e:
             print(f"Error bulk inserting tasks for plan {new_plan_id}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail="Plan was generated, but failed to create associated tasks."
-            )
-
+            # This is not a critical failure, so we don't raise an HTTPException
+            # The plan was still created. We can log this for monitoring.
+    
     # 5. Fetch the newly created plan to return it in the response
     created_plan_doc = await db.plans.find_one({"_id": result.inserted_id})
 
