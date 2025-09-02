@@ -3,7 +3,6 @@ import {
   Activity,
   Target,
   Droplets,
-  Moon,
   Dumbbell,
   TrendingUp,
   CheckCircle2,
@@ -18,18 +17,13 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 
-// --- IMPORT THE PRISM COMPONENT ---
-import Prism from '@/components/react_bits/Prism';
-
-// --- IMPORT THE GRADIENT BLINDS COMPONENT ---
-import GradientBlinds from '@/components/react_bits/GradientBlinds';
-
-import PrismaticBurst from '@/components/react_bits/PrismaticBurst';
-
 import Squares from '@/components/react_bits/Squares';
-
-// --- IMPORT THE BLUR TEXT COMPONENT ---
 import BlurText from '@/components/react_bits/BlurText';
+
+// --- IMPORT THE NEW MAGICBENTO COMPONENTS ---
+import MagicBento, { BentoCard } from '@/components/react_bits/MagicBento';
+
+// --- HELPER COMPONENTS (No changes needed here) ---
 
 // NOTE: Using a mock API for detailed metrics as the backend endpoints (/metrics/*) are not yet available.
 // This preserves the original dashboard's visual structure.
@@ -195,11 +189,36 @@ function ProgressRing({ progress, size = 120, strokeWidth = 8, color = "rgb(59, 
   )
 }
 
-// Metric Card Component
+// ServerStatus
+function ServerStatus() {
+  const [status, setStatus] = useState('Connecting...')
+  const [isOnline, setIsOnline] = useState(false)
+
+  useEffect(() => {
+    api.get('/').then(r => {
+      setStatus(r.data?.message || 'Online')
+      setIsOnline(true)
+    }).catch(() => {
+      setStatus('Offline')
+      setIsOnline(false)
+    })
+  }, [])
+
+  return (
+    <div className="flex items-center space-x-2">
+      <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
+      <span className="text-sm text-slate-300">{status}</span>
+    </div>
+  )
+}
+
+// --- UPDATED COMPONENTS TO USE BENTOCARD ---
+
+// Metric Card Component (Now provides only the inner content)
 function MetricCard({ icon: Icon, title, value, unit, color, progress, loading }) {
   return (
-    <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-white/10 overflow-hidden group transform hover:scale-102 hover:-translate-y-1 transition-all duration-300">
-      <div className={`p-4 bg-gradient-to-r ${color} relative overflow-hidden`}>
+    <div className="flex flex-col h-full group"> {/* Added group for hover effects */}
+      <div className={`p-4 bg-gradient-to-r ${color} relative overflow-hidden rounded-t-xl`}>
         <div className="flex items-center justify-between relative z-10">
           <Icon className="w-7 h-7 text-white" />
           <TrendingUp className="w-5 h-5 text-white/70 group-hover:text-white transition-colors" />
@@ -208,7 +227,7 @@ function MetricCard({ icon: Icon, title, value, unit, color, progress, loading }
           style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, transparent 30%, rgba(255,255,255,0.1) 100%)' }} />
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-4 space-y-3 flex-grow flex flex-col justify-between">
         <div>
           <div className="flex items-baseline space-x-2">
             <span className="text-3xl font-bold text-white">
@@ -244,15 +263,6 @@ function MetricCard({ icon: Icon, title, value, unit, color, progress, loading }
   )
 }
 
-// General Card Component
-function ThemedCard({ children, className = '' }) {
-  return (
-    <div className={`bg-slate-800/50 backdrop-blur-md border border-white/10 rounded-2xl p-6 ${className}`}>
-      {children}
-    </div>
-  );
-}
-
 // AI Chat Panel
 function AIChatPanel() {
   const [messages] = useState([
@@ -261,7 +271,7 @@ function AIChatPanel() {
   ])
 
   return (
-    <ThemedCard>
+    <>
       <div className="flex items-center space-x-3 mb-4">
         <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
           <Brain className="w-5 h-5 text-white" />
@@ -299,7 +309,7 @@ function AIChatPanel() {
           <MessageSquare className="w-4 h-4" />
         </button>
       </div>
-    </ThemedCard>
+    </>
   )
 }
 
@@ -310,7 +320,7 @@ function TaskTracker({ tasks }) {
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0
 
   return (
-    <ThemedCard className="h-full">
+    <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg font-semibold text-white">Today's Tasks</h3>
         <div className="text-sm text-slate-400">{completedTasks}/{totalTasks}</div>
@@ -321,7 +331,7 @@ function TaskTracker({ tasks }) {
       </div>
 
       <div className="space-y-3">
-        {tasks?.slice(0, 4).map((task, idx) => (
+        {tasks?.slice(0, 4).map((task) => (
           <div
             key={task._id}
             className={`flex items-center space-x-3 p-3 rounded-xl transition-all animate-fadeIn ${task.completed ? 'bg-green-500/20' : 'bg-white/5 hover:bg-white/10'
@@ -336,7 +346,7 @@ function TaskTracker({ tasks }) {
           </div>
         ))}
       </div>
-    </ThemedCard>
+    </div>
   )
 }
 
@@ -363,37 +373,10 @@ function AchievementBadge({ icon: Icon, title, description, unlocked = false }) 
   )
 }
 
-// ServerStatus
-function ServerStatus() {
-  const [status, setStatus] = useState('Connecting...')
-  const [isOnline, setIsOnline] = useState(false)
-
-  useEffect(() => {
-    api.get('/').then(r => {
-      setStatus(r.data?.message || 'Online')
-      setIsOnline(true)
-    }).catch(() => {
-      setStatus('Offline')
-      setIsOnline(false)
-    })
-  }, [])
-
-  return (
-    <div className="flex items-center space-x-2">
-      <div className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
-      <span className="text-sm text-slate-300">{status}</span>
-    </div>
-  )
-}
-
 // Metrics Section Component
 function MetricsSection() {
   const [selectedPeriod, setSelectedPeriod] = useState('weekly')
-  const [metricsData, setMetricsData] = useState({
-    calories: { value: 0, progress: 0 },
-    workouts: { value: 0, progress: 0 },
-    hours: { value: 0, progress: 0 }
-  })
+  const [metricsData, setMetricsData] = useState({ calories: {}, workouts: {}, hours: {} })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -404,8 +387,7 @@ function MetricsSection() {
           mockMetricsApi.get('/metrics/calories'),
           mockMetricsApi.get('/metrics/workouts'),
           mockMetricsApi.get('/metrics/hours')
-        ])
-
+        ]);
         setMetricsData({
           calories: caloriesRes.data[selectedPeriod] || { value: 0, progress: 0 },
           workouts: workoutsRes.data[selectedPeriod] || { value: 0, progress: 0 },
@@ -420,72 +402,63 @@ function MetricsSection() {
     fetchAllMetrics()
   }, [selectedPeriod])
 
-  const getUnitForPeriod = (baseUnit, period) => {
-    if (baseUnit === 'kcal') return 'kcal'
-    if (baseUnit === 'workouts') return period === 'daily' ? 'workout' : 'workouts'
-    if (baseUnit === 'hours') return period === 'daily' ? 'hrs' : 'hours'
-    return baseUnit
-  }
-
-  const getPeriodTitle = (baseTitle, period) => {
-    const periodMap = {
-      daily: "Today's",
-      weekly: "This Week's",
-      monthly: "This Month's"
-    }
-    return `${periodMap[period]} ${baseTitle}`
-  }
-
   return (
     <div className="relative z-20">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white flex items-center">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
+        <h2 className="text-2xl font-bold text-white flex items-center shrink-0">
           <Activity className="w-6 h-6 mr-3 text-blue-400" />
           Performance Overview
         </h2>
-        <div className="flex items-center space-x-4">
-          <span className="text-slate-400 text-sm">View data for:</span>
+        <div className="flex items-center space-x-4 w-full md:w-auto justify-end">
+          <span className="text-slate-400 text-sm hidden sm:inline">View data for:</span>
           <TimePeriodDropdown
             selectedPeriod={selectedPeriod}
             onPeriodChange={setSelectedPeriod}
-            className="scale-110"
+            className="scale-105"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 z-10">
-        <MetricCard
-          icon={Target}
-          title={getPeriodTitle("Calories Burned", selectedPeriod)}
-          value={metricsData.calories.value}
-          unit={getUnitForPeriod('kcal', selectedPeriod)}
-          color="from-red-500 to-orange-600"
-          progress={metricsData.calories.progress}
-          loading={loading}
-        />
-        <MetricCard
-          icon={Dumbbell}
-          title={getPeriodTitle("Workouts", selectedPeriod)}
-          value={metricsData.workouts.value}
-          unit={getUnitForPeriod('workouts', selectedPeriod)}
-          color="from-blue-500 to-sky-600"
-          progress={metricsData.workouts.progress}
-          loading={loading}
-        />
-        <MetricCard
-          icon={Clock}
-          title={getPeriodTitle("Training Time", selectedPeriod)}
-          value={metricsData.hours.value}
-          unit={getUnitForPeriod('hours', selectedPeriod)}
-          color="from-purple-500 to-indigo-600"
-          progress={metricsData.hours.progress}
-          loading={loading}
-        />
+        <BentoCard className="card p-0"> {/* Add 'card' and remove padding */}
+          <MetricCard
+            icon={Target}
+            title="Calories Burned"
+            value={metricsData.calories.value}
+            unit="kcal"
+            color="from-red-500 to-orange-600"
+            progress={metricsData.calories.progress}
+            loading={loading}
+          />
+        </BentoCard>
+        <BentoCard className="card p-0">
+          <MetricCard
+            icon={Dumbbell}
+            title="Workouts Completed"
+            value={metricsData.workouts.value}
+            unit="workouts"
+            color="from-blue-500 to-sky-600"
+            progress={metricsData.workouts.progress}
+            loading={loading}
+          />
+        </BentoCard>
+        <BentoCard className="card p-0">
+          <MetricCard
+            icon={Clock}
+            title="Training Time"
+            value={metricsData.hours.value}
+            unit="hours"
+            color="from-purple-500 to-indigo-600"
+            progress={metricsData.hours.progress}
+            loading={loading}
+          />
+        </BentoCard>
       </div>
     </div>
   )
 }
 
+// --- MAIN DASHBOARD COMPONENT ---
 export default function Dashboard() {
   const [userData, setUserData] = useState({ name: '', streak: 0, tasks: [] })
   const [loading, setLoading] = useState(true)
@@ -511,6 +484,16 @@ export default function Dashboard() {
     load()
   }, [])
 
+  // Default props for the BentoCard components to avoid repetition
+  const bentoCardProps = {
+    disableAnimations: loading,
+    enableTilt: true,
+    enableMagnetism: true,
+    clickEffect: true,
+    particleCount: 15,
+    glowColor: "132, 0, 255",
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
@@ -520,125 +503,102 @@ export default function Dashboard() {
   }
 
   return (
-    // --- CHANGE 1: Main container setup for layering ---
     <div className="relative min-h-screen bg-slate-900 p-4 md:p-6 lg:p-8 overflow-hidden">
-      
-      {/* --- CHANGE 2: Prism background layer --- */}
       <div className="absolute inset-0 z-0 opacity-50">
-        <Squares 
-          speed={0.5} 
-          squareSize={40}
-          direction='diagonal' // up, down, left, right, diagonal
-          borderColor='#fff'
-          hoverFillColor='#222'
-          />
+        <Squares speed={0.5} squareSize={40} direction='diagonal' borderColor='#fff' hoverFillColor='#222' />
       </div>
-      
-      {/* --- CHANGE 3: Semi-transparent overlay for readability --- */}
       <div className="absolute inset-0 z-10 bg-gradient-to-br from-slate-900/80 via-purple-900/20 to-slate-900/80" />
 
-      {/* --- CHANGE 4: Content layer on top --- */}
-      <div className="relative z-20 max-w-7xl mx-auto space-y-8 opacity-0 animate-fadeIn">
-        <ThemedCard className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-indigo-900/20" />
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full blur-3xl transform translate-x-32 -translate-y-32" />
-
-          <div className="relative z-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex-1">
-                <h1 className="text-4xl lg:text-5xl font-bold mb-3 text-white">
-                  <BlurText
-                    text={`Welcome back, ${userData.name}!`}
-                    delay={100}
-                    animateBy="words"
-                    direction="top"
-                  />
-                </h1>
-                <p className="text-slate-300 text-lg mb-6">
-                  You're crushing your fitness goals! Keep up the momentum.
-                </p>
-                <div className="flex items-center space-x-6">
+      {/* Wrap the entire dashboard content grid in the MagicBento container */}
+      <MagicBento
+        className="relative z-20 max-w-7xl mx-auto space-y-8 opacity-0 animate-fadeIn"
+        enableSpotlight={true}
+        enableBorderGlow={true}
+        glowColor="132, 0, 255"
+      >
+        <div className="space-y-8"> {/* Added this div to group children for MagicBento */}
+          <BentoCard {...bentoCardProps} className="card relative overflow-hidden p-6 md:p-8">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-purple-900/20 to-indigo-900/20" />
+            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full blur-3xl transform translate-x-32 -translate-y-32" />
+            <div className="relative z-10">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                <div className="flex-1">
+                  <h1 className="text-4xl lg:text-5xl font-bold mb-3 text-white">
+                    <BlurText text={`Welcome back, ${userData.name}!`} delay={100} animateBy="words" direction="top" />
+                  </h1>
+                  <p className="text-slate-300 text-lg mb-6">You're crushing your fitness goals! Keep up the momentum.</p>
                   <ServerStatus />
                 </div>
-              </div>
-
-              <div className="flex-shrink-0">
-                <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-6 text-center relative overflow-hidden shadow-2xl">
-                  <div className="absolute inset-0 bg-white/10 opacity-20"
-                    style={{ backgroundImage: 'radial-gradient(circle at 25% 25%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%), radial-gradient(circle at 75% 75%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%)' }} />
-
-                  <div className="relative z-10">
-                    <div className="w-16 h-16 mx-auto mb-3 animate-spin-slow">
-                      <Flame className="w-full h-full text-white drop-shadow-lg" />
-                    </div>
-                    <div className="text-4xl font-bold text-white mb-1">
-                      {userData.streak}
-                    </div>
-                    <div className="text-orange-100 font-medium text-sm uppercase tracking-wider">
-                      Day Streak
-                    </div>
-                    <div className="mt-2 text-xs text-orange-200 animate-pulse">
-                      🔥 On Fire!
+                <div className="flex-shrink-0">
+                  <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-6 text-center relative overflow-hidden shadow-2xl">
+                    <div className="absolute inset-0 bg-white/10 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 25% 25%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%), radial-gradient(circle at 75% 75%, transparent 20%, rgba(255,255,255,0.1) 21%, rgba(255,255,255,0.1) 40%, transparent 41%)' }} />
+                    <div className="relative z-10">
+                      <div className="w-16 h-16 mx-auto mb-3 animate-spin-slow">
+                        <Flame className="w-full h-full text-white drop-shadow-lg" />
+                      </div>
+                      <div className="text-4xl font-bold text-white mb-1">{userData.streak}</div>
+                      <div className="text-orange-100 font-medium text-sm uppercase tracking-wider">Day Streak</div>
+                      <div className="mt-2 text-xs text-orange-200 animate-pulse">🔥 On Fire!</div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </ThemedCard>
+          </BentoCard>
 
-        <MetricsSection />
+          <MetricsSection />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <AIChatPanel />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <BentoCard {...bentoCardProps} className="card lg:col-span-2 p-6">
+              <AIChatPanel />
+            </BentoCard>
+            <BentoCard {...bentoCardProps} className="card p-6">
+              <TaskTracker tasks={userData.tasks} />
+            </BentoCard>
           </div>
-          <div>
-            <TaskTracker tasks={userData.tasks} />
-          </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <ThemedCard>
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <TrendingUp className="w-5 h-5 mr-2 text-green-400" />
-              Weight Progress
-            </h3>
-            <div className="h-48 bg-green-900/20 rounded-xl flex items-center justify-center">
-              <div className="text-center text-slate-400">
-                <TrendingUp className="w-12 h-12 mx-auto mb-2 text-green-400" />
-                <p>Chart visualization here</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <BentoCard {...bentoCardProps} className="card p-6">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                <TrendingUp className="w-5 h-5 mr-2 text-green-400" />
+                Weight Progress
+              </h3>
+              <div className="h-48 bg-slate-800/50 rounded-xl flex items-center justify-center">
+                <div className="text-center text-slate-400">
+                  <TrendingUp className="w-12 h-12 mx-auto mb-2 text-green-400" />
+                  <p>Chart visualization here</p>
+                </div>
               </div>
-            </div>
-          </ThemedCard>
-
-          <ThemedCard>
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <Heart className="w-5 h-5 mr-2 text-red-400" />
-              Heart Rate Zones
-            </h3>
-            <div className="h-48 bg-red-900/20 rounded-xl flex items-center justify-center">
-              <div className="text-center text-slate-400">
-                <Heart className="w-12 h-12 mx-auto mb-2 text-red-400" />
-                <p>Heart rate data visualization</p>
+            </BentoCard>
+            
+            <BentoCard {...bentoCardProps} className="card p-6">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                <Heart className="w-5 h-5 mr-2 text-red-400" />
+                Heart Rate Zones
+              </h3>
+              <div className="h-48 bg-slate-800/50 rounded-xl flex items-center justify-center">
+                <div className="text-center text-slate-400">
+                  <Heart className="w-12 h-12 mx-auto mb-2 text-red-400" />
+                  <p>Heart rate data visualization</p>
+                </div>
               </div>
-            </div>
-          </ThemedCard>
-        </div>
-
-        <div>
-          <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
-            <Award className="w-6 h-6 mr-3 text-yellow-400" />
-            Recent Achievements
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <AchievementBadge icon={Flame} title="7-Day Streak" description="Completed 7 days in a row" unlocked={true} />
-            <AchievementBadge icon={Dumbbell} title="Strength Hero" description="100 workouts completed" unlocked={true} />
-            <AchievementBadge icon={Droplets} title="Hydration Master" description="Perfect hydration week" unlocked={false} />
-            <AchievementBadge icon={Users} title="Community Star" description="Top 10% this month" unlocked={false} />
+            </BentoCard>
           </div>
+
+          <BentoCard {...bentoCardProps} className="card p-6">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+              <Award className="w-6 h-6 mr-3 text-yellow-400" />
+              Recent Achievements
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <AchievementBadge icon={Flame} title="7-Day Streak" description="Completed 7 days in a row" unlocked={true} />
+              <AchievementBadge icon={Dumbbell} title="Strength Hero" description="100 workouts completed" unlocked={true} />
+              <AchievementBadge icon={Droplets} title="Hydration Master" description="Perfect hydration week" unlocked={false} />
+              <AchievementBadge icon={Users} title="Community Star" description="Top 10% this month" unlocked={false} />
+            </div>
+          </BentoCard>
         </div>
-      </div>
+      </MagicBento>
     </div>
   )
 }
