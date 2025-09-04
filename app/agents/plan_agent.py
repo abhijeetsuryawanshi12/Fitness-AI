@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from typing import List
 import json
 import logging
-from datetime import date
+from datetime import datetime, timezone
 
 # Load environment variables from .env file
 load_dotenv()
@@ -43,6 +43,7 @@ class NutritionFacts(BaseModel):
 class Meal(BaseModel):
     meal_name: str
     nutrition_facts: NutritionFacts
+    task_time: str
 
 class Exercise(BaseModel):
     name: str
@@ -50,6 +51,7 @@ class Exercise(BaseModel):
     reps: int
     weights: List[float]
     instructions: str
+    task_time: str
 
 class DailyPlan(BaseModel):
     day: int
@@ -108,7 +110,8 @@ prompt_template = ChatPromptTemplate.from_template(
        - 4-6 meals with accurate nutrition facts
     3. For each meal include:
        - Calories, Protein, Carbs, Fats (all types), Cholesterol, Sodium, Dietary Fiber, Sugars (total, added, alcohols), and all micros
-
+    4. Schedule tasks (exercises and meals) at appropriate times based on the user's preferred workout time and meals per day.
+    
     **JSON Response Format:**
     {{
       "title": "string",
@@ -122,7 +125,8 @@ prompt_template = ChatPromptTemplate.from_template(
               "sets": int,
               "reps": int,
               "weights": [float],
-              "instructions": "string"
+              "instructions": "string",
+              "task_time": "str"
             }}
           ],
           "meals": [
@@ -149,7 +153,8 @@ prompt_template = ChatPromptTemplate.from_template(
                 "potassium": float,
                 "vitamin_a": float,
                 "vitamin_c": float
-              }}
+              }},
+              "task_time": "str"
             }}
           ]
         }}

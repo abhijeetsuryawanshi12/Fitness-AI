@@ -6,6 +6,7 @@ from app.models import User
 from app.security import get_current_user
 from typing import Dict, List
 from datetime import datetime, timedelta, timezone
+from app.services.dashboard_services import (fetch_tasks_today, fetch_tasks_week, fetch_tasks_month, fetch_calories_burned)
 
 router = APIRouter(
     prefix="/progress",
@@ -28,10 +29,16 @@ async def get_my_progress(
     # --- Define time range based on the period ---
     if period == "daily":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        tasks_percent = fetch_tasks_today()
+        calories_burnt = fetch_calories_burned("daily")
     elif period == "weekly":
         start_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        tasks_percent = fetch_tasks_week()
+        calories_burnt = fetch_calories_burned("weekly")
     else: # monthly
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        tasks_percent = fetch_tasks_month()
+        calories_burnt = fetch_calories_burned("monthly")
 
     # --- Match stage for all pipelines ---
     match_stage = {
@@ -99,5 +106,8 @@ async def get_my_progress(
 
     return {
         "summary": total_summary,
-        "chart_data": chart_data_result
+        "chart_data": chart_data_result,
+        "tasks_completion_percent": tasks_percent,
+        "calories_burned": calories_burnt
     }
+

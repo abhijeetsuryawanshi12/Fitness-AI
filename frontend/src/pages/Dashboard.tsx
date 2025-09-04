@@ -5,7 +5,7 @@ import {
   Droplets,
   Dumbbell,
   TrendingUp,
-  CheckCircle2,
+  CheckCircle2, // --- CHANGE START ---: Import new icon for the updated card
   MessageSquare,
   Award,
   Users,
@@ -25,8 +25,7 @@ import MagicBento, { BentoCard } from '@/components/react_bits/MagicBento';
 
 // --- HELPER COMPONENTS (No changes needed here) ---
 
-// NOTE: Using a mock API for detailed metrics as the backend endpoints (/metrics/*) are not yet available.
-// This preserves the original dashboard's visual structure.
+// NOTE: We will keep the mock API for other metrics that are not yet available.
 const mockMetricsApi = {
   get: (endpoint) => {
     const mockData = {
@@ -37,6 +36,7 @@ const mockMetricsApi = {
           monthly: { value: 52000, progress: 82 }
         }
       },
+      // We are replacing the workouts endpoint, so this is no longer used for that card.
       '/metrics/workouts': {
         data: {
           daily: { value: 1, progress: 100 },
@@ -70,6 +70,7 @@ const timePeriods = [
   { value: 'monthly', label: 'This Month', shortLabel: 'Month' }
 ]
 
+
 // Animated Counter Component
 function AnimatedCounter({ value, duration = 1000 }) {
   const [count, setCount] = useState(0)
@@ -98,7 +99,8 @@ function AnimatedCounter({ value, duration = 1000 }) {
     return () => clearInterval(timer)
   }, [value, duration])
 
-  return <span>{count}</span>
+  // Display integer if value is a whole number, otherwise one decimal place
+  return <span>{Number.isInteger(count) ? count : count.toFixed(0)}</span>
 }
 
 // Time Period Dropdown Component
@@ -379,28 +381,51 @@ function MetricsSection() {
   const [metricsData, setMetricsData] = useState({ calories: {}, workouts: {}, hours: {} })
   const [loading, setLoading] = useState(true)
 
+  // --- CHANGE START ---: This entire useEffect hook is updated to fetch real data
   useEffect(() => {
     async function fetchAllMetrics() {
       setLoading(true)
       try {
-        const [caloriesRes, workoutsRes, hoursRes] = await Promise.all([
+        // We will fetch the real progress data and the mock data for other cards concurrently
+        const [progressRes, caloriesRes, hoursRes] = await Promise.all([
+          // REAL API CALL: Fetch progress data from your backend
+          api.get('/progress/me', { params: { period: selectedPeriod } }),
+          // MOCK API CALLS: Keep these for now
           mockMetricsApi.get('/metrics/calories'),
-          mockMetricsApi.get('/metrics/workouts'),
           mockMetricsApi.get('/metrics/hours')
         ]);
+
+        // Extract the completion percentage from the real API response
+        const completionPercent = progressRes.data.tasks_completion_percent || 0;
+        const caloriesBurnt = progressRes.data.calories_burned || 0;
+
         setMetricsData({
-          calories: caloriesRes.data[selectedPeriod] || { value: 0, progress: 0 },
-          workouts: workoutsRes.data[selectedPeriod] || { value: 0, progress: 0 },
+          calories: {
+            value: caloriesBurnt,
+            progress: caloriesRes.data[selectedPeriod]?.progress || 0
+          },
+          // Use the real data for the 'workouts' card
+          workouts: {
+            value: Math.round(completionPercent),
+            progress: Math.round(completionPercent)
+          },
           hours: hoursRes.data[selectedPeriod] || { value: 0, progress: 0 }
         })
       } catch (error) {
         console.error('Failed to load metrics data:', error)
+        // Set a default error state so the UI doesn't crash
+        setMetricsData({
+            calories: { value: 0, progress: 0 },
+            workouts: { value: 0, progress: 0 },
+            hours: { value: 0, progress: 0 }
+        })
       } finally {
         setLoading(false)
       }
     }
     fetchAllMetrics()
   }, [selectedPeriod])
+  // --- CHANGE END ---
 
   return (
     <div className="relative z-20">
@@ -420,7 +445,7 @@ function MetricsSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 z-10">
-        <BentoCard className="card p-0"> {/* Add 'card' and remove padding */}
+        <BentoCard className="card p-0">
           <MetricCard
             icon={Target}
             title="Calories Burned"
@@ -431,17 +456,21 @@ function MetricsSection() {
             loading={loading}
           />
         </BentoCard>
+
+        {/* --- CHANGE START ---: Update the MetricCard props for the new data */}
         <BentoCard className="card p-0">
           <MetricCard
-            icon={Dumbbell}
-            title="Workouts Completed"
+            icon={CheckCircle2}         // Using a more general icon
+            title="Task Completion"     // More accurate title
             value={metricsData.workouts.value}
-            unit="workouts"
+            unit="%"                    // Unit is now percentage
             color="from-blue-500 to-sky-600"
             progress={metricsData.workouts.progress}
             loading={loading}
           />
         </BentoCard>
+        {/* --- CHANGE END --- */}
+        
         <BentoCard className="card p-0">
           <MetricCard
             icon={Clock}
