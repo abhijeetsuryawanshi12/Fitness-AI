@@ -80,6 +80,9 @@ class User(BaseModel):
     streak: int = Field(default=0, description="Current daily task completion streak.")
     last_completed_task_date: Optional[date] = Field(None, description="The date of the last day a task was completed.")
 
+    # --- NEW PUSH NOTIFICATION FIELD ---
+    push_subscriptions: List[Dict[str, Any]] = Field(default=[], description="List of push notification subscription objects.")
+
 
     @model_validator(mode='after')
     def validate_diet_type(self) -> 'User':

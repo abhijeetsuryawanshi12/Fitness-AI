@@ -12,6 +12,9 @@ from app.routes.document import router as document_router
 from app.routes.voice import router as voice_router
 from app.routes.notifications import router as notifications_router
 from fastapi.middleware.cors import CORSMiddleware
+# --- NEW IMPORTS for scheduler ---
+from app.scheduler import scheduler
+from app.routes.notifications import check_and_send_task_notifications
 
 
 @asynccontextmanager
@@ -20,7 +23,25 @@ async def lifespan(app: FastAPI):
     Handles application startup and shutdown events.
     """
     await connect_to_mongo()
+    # --- NEW: Start the scheduler ---
+    if not scheduler.running:
+        # Add the job to check for notifications every minute
+        scheduler.add_job(
+            check_and_send_task_notifications,
+            'interval',
+            minutes=1,
+            id="task_notification_job",
+            replace_existing=True
+        )
+        scheduler.start()
+        print("Scheduler started.")
+    # --- END NEW ---
     yield
+    # --- NEW: Shutdown the scheduler ---
+    if scheduler.running:
+        scheduler.shutdown()
+        print("Scheduler shut down.")
+    # --- END NEW ---
     await close_mongo_connection()
 
 app = FastAPI(
