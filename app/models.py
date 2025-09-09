@@ -174,6 +174,7 @@ class Task(BaseModel):
     
     # --- MODIFIED: Added priority to match frontend ---
     priority: Literal["high", "medium", "low"] = Field("medium", description="Priority of the task.")
+    notified: bool = Field(default=False, description="Whether a push notification has been sent for this task.")
     
     completed: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -189,7 +190,8 @@ class Task(BaseModel):
             "details": {"instructions": "Lower the bar to your chest..."},
             "type": "workout", 
             "priority": "high",
-            "completed": False
+            "completed": False,
+            "notified": False
         }}
     )
 

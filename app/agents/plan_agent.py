@@ -40,10 +40,15 @@ class NutritionFacts(BaseModel):
     vitamin_a: float
     vitamin_c: float
 
+class TimeStruct(BaseModel):
+    hour: int
+    minute: int
+    second: int
+
 class Meal(BaseModel):
     meal_name: str
     nutrition_facts: NutritionFacts
-    task_time: str
+    task_time: TimeStruct
 
 class Exercise(BaseModel):
     name: str
@@ -51,7 +56,7 @@ class Exercise(BaseModel):
     reps: int
     weights: List[float]
     instructions: str
-    task_time: str
+    task_time: TimeStruct  # <-- CORRECTED: Was str, now matches Meal and prompt
 
 class DailyPlan(BaseModel):
     day: int
@@ -126,7 +131,7 @@ prompt_template = ChatPromptTemplate.from_template(
               "reps": int,
               "weights": [float],
               "instructions": "string",
-              "task_time": "str"
+              "task_time": {{"hour": int, "minute": int, "second": int}}
             }}
           ],
           "meals": [
@@ -154,7 +159,7 @@ prompt_template = ChatPromptTemplate.from_template(
                 "vitamin_a": float,
                 "vitamin_c": float
               }},
-              "task_time": "str"
+              "task_time": {{"hour": int, "minute": int, "second": int}}
             }}
           ]
         }}

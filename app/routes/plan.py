@@ -8,7 +8,7 @@ from app.db import get_database
 from app.models import Plan, User, Task
 from app.agents.plan_agent import generate_full_plan
 from app.security import get_current_user
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 
 router = APIRouter(prefix="/plan", tags=["Plan Generation"])
 
@@ -92,15 +92,27 @@ async def generate_plan_endpoint(
 
     for day_plan in daily_schedule:
         day_number = day_plan.get("day", 1)
-        task_datetime = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=day_number - 1)
+        # --- CORRECTED LOGIC: Get the base date for the task ---
+        task_date_part = today + timedelta(days=day_number - 1)
 
         # Create tasks for exercises if the plan type includes "workout"
         if request.type in ["workout", "workout and diet"] and "exercises" in day_plan:
             for exercise in day_plan.get("exercises", []):
+                # --- CORRECTED LOGIC: Extract time and create precise datetime ---
+                task_time_data = exercise.get("task_time", {})
+                hour = task_time_data.get("hour", 0)
+                minute = task_time_data.get("minute", 0)
+                
+                task_datetime = datetime.combine(
+                    task_date_part,
+                    time(hour=hour, minute=minute),
+                    tzinfo=timezone.utc
+                )
+
                 task_model = Task(
                     user_id=user_id_str,
                     plan_id=new_plan_id,
-                    task_date=task_datetime,
+                    task_date=task_datetime, # Use the precise datetime
                     name=exercise.get("name", "Unnamed Exercise"),
                     details=exercise,
                     type="workout",
@@ -111,10 +123,21 @@ async def generate_plan_endpoint(
         # Create tasks for meals if the plan type includes "diet"
         if request.type in ["diet", "workout and diet"] and "meals" in day_plan:
             for meal in day_plan.get("meals", []):
+                # --- CORRECTED LOGIC: Extract time and create precise datetime ---
+                task_time_data = meal.get("task_time", {})
+                hour = task_time_data.get("hour", 0)
+                minute = task_time_data.get("minute", 0)
+
+                task_datetime = datetime.combine(
+                    task_date_part,
+                    time(hour=hour, minute=minute),
+                    tzinfo=timezone.utc
+                )
+                
                 task_model = Task(
                     user_id=user_id_str,
                     plan_id=new_plan_id,
-                    task_date=task_datetime,
+                    task_date=task_datetime, # Use the precise datetime
                     name=meal.get("meal_name", "Unnamed Meal"),
                     details=meal,
                     type="diet",

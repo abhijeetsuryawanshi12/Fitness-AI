@@ -40,3 +40,9 @@ webrtcvad
 pyaudio
 pyttsx3
 numpy
+
+# Web Push Notifications
+pywebpush 
+apscheduler 
+motor
+pywebpush[cli]

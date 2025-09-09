@@ -28,6 +28,11 @@ class Settings:
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7 # 7 days
 
+    # Load VAPID keys from environment variables (recommended)
+    VAPID_PUBLIC_KEY: str = os.environ.get("VAPID_PUBLIC_KEY")
+    VAPID_PRIVATE_KEY: str = os.environ.get("VAPID_PRIVATE_KEY")
+    VAPID_EMAIL: str = os.environ.get("VAPID_EMAIL")
+
     if not MONGODB_URI:
         raise ValueError("MONGODB_URI environment variable not set in .env file")
     if not GEMINI_API_KEY:

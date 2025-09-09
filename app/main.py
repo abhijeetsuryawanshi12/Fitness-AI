@@ -10,6 +10,7 @@ from app.routes.profile import router as profile_router
 from app.routes.food import router as food_router
 from app.routes.document import router as document_router
 from app.routes.voice import router as voice_router
+from app.routes.notifications import router as notifications_router
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -47,6 +48,7 @@ app.include_router(progress_router)
 app.include_router(food_router)
 app.include_router(document_router)
 app.include_router(voice_router)
+app.include_router(notifications_router)
 
 @app.get("/", tags=["Root"])
 def read_root():

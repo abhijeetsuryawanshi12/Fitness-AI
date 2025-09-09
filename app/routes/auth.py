@@ -1,4 +1,5 @@
 # app/routes/auth.py
+# app/routes/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -58,6 +59,8 @@ async def register_user(
         # --- NEW: Initialize streak fields on registration ---
         "streak": 0,
         "last_completed_task_date": None,
+        # --- NEW: Initialize push subscriptions on registration ---
+        "push_subscriptions": [],
     }
     
     result = await db.users.insert_one(user_document)
