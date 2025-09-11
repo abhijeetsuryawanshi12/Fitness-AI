@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 
 import api from '@/lib/api'
+import Orb from '@/components/react_bits/Orb';
 
 // Type Definitions
 type Message = {
@@ -489,57 +490,69 @@ export default function Chat() {
   const stopRecording = () => { if (mediaRecorderRef.current && recording) { mediaRecorderRef.current.stop(); setRecording(false) } }
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Header */}
-      <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white/10 backdrop-blur-lg border-b border-white/20 p-4 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ArrowLeft className="w-5 h-5" /></button>
-          <div><h1 className="text-xl font-bold">AI Fitness Coach</h1><div className="flex items-center space-x-2 text-sm text-slate-300"><div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" /><span>Online</span></div></div>
-        </div>
-        <div className="flex items-center space-x-3">
-          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors">{soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}</button>
-          <button onClick={() => setShowDocumentsSidebar(true)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><FileText className="w-5 h-5" /></button>
-          {/* ADDED: History Sidebar Toggle Button */}
-          <button onClick={() => setIsHistorySidebarOpen(true)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><MessageSquare className="w-5 h-5" /></button>
-          <button className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><Settings className="w-5 h-5" /></button>
-          <UserProfile />
-        </div>
-      </motion.div>
-
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <AnimatePresence>
-          {messages.map(message => <MessageBubble key={message.id} message={message} onPlayAudio={(url) => { if(audioRef.current) { audioRef.current.src = url; audioRef.current.play() }}}/>)}
-        </AnimatePresence>
-        {loading && <TypingIndicator />}
-        <div ref={messagesEndRef} />
+    <div className="relative h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white overflow-hidden">
+      {/* Background Orb */}
+      <div className="absolute inset-0 z-0">
+        <Orb
+          hoverIntensity={0.5}
+          rotateOnHover={true}
+          hue={240} // Matching blue/purple theme
+          forceHoverState={false}
+        />
       </div>
 
-      {/* Quick Actions */}
-      {messages.length === 0 && !currentSessionId && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-2">
-          <p className="text-center text-slate-400 text-sm mb-3">Get started with these quick actions:</p>
-          <QuickActions onAction={sendMessage} />
+      {/* UI Content Layer */}
+      <div className="relative z-10 flex flex-col h-full">
+        {/* Header */}
+        <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white/5 backdrop-blur-lg border-b border-white/20 p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button className="p-2 hover:bg-white/10 rounded-lg transition-colors"><ArrowLeft className="w-5 h-5" /></button>
+            <div><h1 className="text-xl font-bold">AI Fitness Coach</h1><div className="flex items-center space-x-2 text-sm text-slate-300"><div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" /><span>Online</span></div></div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors">{soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}</button>
+            <button onClick={() => setShowDocumentsSidebar(true)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><FileText className="w-5 h-5" /></button>
+            <button onClick={() => setIsHistorySidebarOpen(true)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><MessageSquare className="w-5 h-5" /></button>
+            <button className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><Settings className="w-5 h-5" /></button>
+            <UserProfile />
+          </div>
         </motion.div>
-      )}
 
-      {/* Input Area */}
-      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white/10 backdrop-blur-lg border-t border-white/20 p-4">
-        <form onSubmit={(e) => { e.preventDefault(); sendMessage(input) }} className="flex items-end space-x-3">
-          <div className="flex space-x-2">
-            <motion.button type="button" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowUploadModal(true)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><Paperclip className="w-5 h-5" /></motion.button>
-            <motion.button type="button" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={recording ? stopRecording : startRecording} className={`p-2 rounded-lg transition-colors ${recording ? 'text-red-400 bg-red-500/10 animate-pulse' : 'text-slate-300 hover:text-red-400 hover:bg-red-500/10'}`}><Mic className="w-5 h-5" /></motion.button>
-          </div>
-          <div className="flex-1 relative">
-            <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask me anything about fitness, nutrition, or health..." className="w-full px-4 py-3 pr-12 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" disabled={loading} />
-          </div>
-          <motion.button type="submit" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} disabled={!input.trim() || loading} className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"><Send className="w-5 h-5" /></motion.button>
-        </form>
-      </motion.div>
+        {/* Chat Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <AnimatePresence>
+            {messages.map(message => <MessageBubble key={message.id} message={message} onPlayAudio={(url) => { if(audioRef.current) { audioRef.current.src = url; audioRef.current.play() }}}/>)}
+          </AnimatePresence>
+          {loading && <TypingIndicator />}
+          <div ref={messagesEndRef} />
+        </div>
 
+        {/* Quick Actions */}
+        {messages.length === 0 && !currentSessionId && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="px-4 py-2">
+            <p className="text-center text-slate-400 text-sm mb-3">Get started with these quick actions:</p>
+            <QuickActions onAction={sendMessage} />
+          </motion.div>
+        )}
+
+        {/* Input Area */}
+        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white/5 backdrop-blur-lg border-t border-white/20 p-4">
+          <form onSubmit={(e) => { e.preventDefault(); sendMessage(input) }} className="flex items-end space-x-3">
+            <div className="flex space-x-2">
+              <motion.button type="button" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowUploadModal(true)} className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"><Paperclip className="w-5 h-5" /></motion.button>
+              <motion.button type="button" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={recording ? stopRecording : startRecording} className={`p-2 rounded-lg transition-colors ${recording ? 'text-red-400 bg-red-500/10 animate-pulse' : 'text-slate-300 hover:text-red-400 hover:bg-red-500/10'}`}><Mic className="w-5 h-5" /></motion.button>
+            </div>
+            <div className="flex-1 relative">
+              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask me anything about fitness, nutrition, or health..." className="w-full px-4 py-3 pr-12 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" disabled={loading} />
+            </div>
+            <motion.button type="submit" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} disabled={!input.trim() || loading} className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"><Send className="w-5 h-5" /></motion.button>
+          </form>
+        </motion.div>
+      </div>
+
+      {/* Modals and Sidebars remain here as they use `fixed` positioning */}
       <FileUploadModal isOpen={showUploadModal} onClose={() => setShowUploadModal(false)} onUpload={handleFileUpload} />
       <DocumentsSidebar isOpen={showDocumentsSidebar} onClose={() => setShowDocumentsSidebar(false)} />
-      {/* ADDED: Render the Chat History Sidebar */}
       <ChatHistorySidebar isOpen={isHistorySidebarOpen} onClose={() => setIsHistorySidebarOpen(false)} onSelectSession={handleSelectSession} onNewChat={handleNewChat} />
       <audio ref={audioRef} className="hidden" />
     </div>

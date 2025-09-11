@@ -162,3 +162,41 @@ async def generate_plan_endpoint(
         raise HTTPException(status_code=500, detail="Failed to create and retrieve the plan from the database.")
     
     return created_plan_doc
+
+
+@router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a plan and its tasks")
+async def delete_plan(
+    plan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Deletes a specific plan and all of its associated tasks.
+    This action is irreversible.
+    """
+    try:
+        plan_obj_id = ObjectId(plan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid plan ID format.")
+
+    # Find the plan to ensure it exists and belongs to the current user
+    plan_to_delete = await db.plans.find_one(
+        {"_id": plan_obj_id, "user_id": str(current_user.id)}
+    )
+    if not plan_to_delete:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan not found or you do not have permission to delete it."
+        )
+
+    # Delete all tasks associated with this plan_id
+    delete_tasks_result = await db.tasks.delete_many(
+        {"plan_id": plan_id, "user_id": str(current_user.id)}
+    )
+    print(f"Deleted {delete_tasks_result.deleted_count} tasks for plan {plan_id}.")
+
+    # Delete the plan itself
+    await db.plans.delete_one({"_id": plan_obj_id})
+
+    # No content is returned for a 204 response
+    return

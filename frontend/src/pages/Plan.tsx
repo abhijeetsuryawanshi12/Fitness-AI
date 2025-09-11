@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Calendar, Clock, Target, Dumbbell, Utensils, Play, CheckCircle, Circle, Download, Share2, Zap, TrendingUp, Award, RefreshCw } from 'lucide-react'
-import api from '@/lib/api' // Import your actual API instance
+import { Calendar, Clock, Target, Dumbbell, Utensils, Play, CheckCircle, Circle, Download, RefreshCw, Zap, TrendingUp, Award, Trash2 } from 'lucide-react'
+import api from '@/lib/api'
 
 export default function Plan() {
   const [type, setType] = useState('workout and diet')
-  const [loading, setLoading] = useState(false) // For generation button
-  const [initialLoading, setInitialLoading] = useState(true) // For initial page load
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null); // 'generate' or 'delete'
+  const [initialLoading, setInitialLoading] = useState(true)
   const [plan, setPlan] = useState(null)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedDay, setSelectedDay] = useState(1)
   const [completedExercises, setCompletedExercises] = useState(new Set())
 
-  // Fetch the latest plan when the component mounts
   useEffect(() => {
     async function fetchLatestPlan() {
       try {
@@ -23,7 +23,6 @@ export default function Plan() {
           setSelectedDay(data.content.daily_plan[0].day);
         }
       } catch (err) {
-        // A 404 error is expected if the user has no plan, so we don't set an error state for it.
         if (err.response?.status !== 404) {
           setError('Could not fetch your existing plan.');
         }
@@ -34,29 +33,58 @@ export default function Plan() {
     fetchLatestPlan();
   }, []);
 
-  // Function to generate a new plan
   async function generate(e) {
     e.preventDefault()
-    setLoading(true)
+    setActionInProgress('generate')
     setError(null)
     try {
-      // Use the real API endpoint
-      const { data } = await api.post('/plan/generate', { type })
+      const { data } = await api.post('/plan/generate', { type, start_date: startDate, regenerate: false })
       setPlan(data)
       setSelectedDay(1)
     } catch (err) {
       setError(err?.response?.data?.detail || 'Failed to generate plan')
     } finally {
-      setLoading(false)
+      setActionInProgress(null)
     }
   }
   
-  // Function to reset state and show the generation form again
-  const handleGenerateNew = () => {
-    setPlan(null);
+  async function regeneratePlan() {
+    if (!plan) return;
+    setActionInProgress('generate');
     setError(null);
-    setSelectedDay(1);
-    setActiveTab('overview');
+    try {
+      const currentPlanEndDate = new Date(plan.end_date);
+      const newStartDate = new Date(currentPlanEndDate);
+      newStartDate.setUTCDate(newStartDate.getUTCDate() + 1);
+
+      const { data } = await api.post('/plan/generate', {
+        type: plan.type,
+        start_date: newStartDate.toISOString().split('T')[0],
+        regenerate: true
+      });
+      setPlan(data);
+      setSelectedDay(1);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Failed to generate a new plan.');
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  const handleDeletePlan = async () => {
+    if (!plan) return;
+    if (window.confirm("Are you sure you want to delete this plan and all its tasks? This action cannot be undone.")) {
+      setActionInProgress('delete');
+      setError(null);
+      try {
+        await api.delete(`/plan/${plan._id}`);
+        setPlan(null);
+      } catch (err) {
+        setError(err?.response?.data?.detail || 'Failed to delete the plan.');
+      } finally {
+        setActionInProgress(null);
+      }
+    }
   };
 
   const toggleExerciseComplete = (exerciseId) => {
@@ -72,6 +100,10 @@ export default function Plan() {
   const currentDay = plan?.content?.daily_plan?.find((day) => day.day === selectedDay)
   const totalDays = plan?.content?.daily_plan?.length || 0
   const progressPercentage = totalDays > 0 ? (selectedDay / totalDays) * 100 : 0
+  
+  const planEndDate = plan ? new Date(plan.end_date) : null;
+  const today = new Date();
+  const showRegenerateButton = planEndDate && (today >= new Date(planEndDate.setDate(planEndDate.getDate() - 2)));
 
   const getTotalNutrition = (meals) => {
     return meals.reduce((total, meal) => ({
@@ -82,7 +114,6 @@ export default function Plan() {
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 })
   }
   
-  // Initial loading state while checking for an existing plan
   if (initialLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -94,7 +125,6 @@ export default function Plan() {
     );
   }
 
-  // If no plan exists, show the generation form
   if (!plan) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
@@ -108,7 +138,7 @@ export default function Plan() {
           </div>
 
           <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 shadow-2xl border border-white/20">
-            <div className="space-y-6">
+            <form onSubmit={generate} className="space-y-6">
               <div>
                 <label className="block text-white font-medium mb-3">Plan Type</label>
                 <select 
@@ -121,13 +151,25 @@ export default function Plan() {
                   <option value="workout and diet" className="text-black">Workout & Diet</option>
                 </select>
               </div>
+              
+              <div>
+                <label className="block text-white font-medium mb-3">Plan Start Date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={e => setStartDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full bg-white/10 border border-white/20 rounded-2xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
 
               <button 
-                disabled={loading}
-                onClick={generate}
+                type="submit"
+                disabled={actionInProgress !== null}
                 className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-4 px-8 rounded-2xl hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
               >
-                {loading ? (
+                {actionInProgress === 'generate' ? (
                   <>
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                     Generating Your Plan...
@@ -145,18 +187,16 @@ export default function Plan() {
                   {error}
                 </div>
               )}
-            </div>
+            </form>
           </div>
         </div>
       </div>
     )
   }
 
-  // If a plan exists, display it
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div>
@@ -164,18 +204,27 @@ export default function Plan() {
               <p className="text-slate-300">{plan.content.title}</p>
             </div>
             <div className="flex gap-3">
-              <button onClick={handleGenerateNew} className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-colors flex items-center gap-2">
-                <RefreshCw className="w-4 h-4" />
-                Generate New Plan
-              </button>
-              <button className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-colors flex items-center gap-2">
+              {showRegenerateButton && (
+                <button onClick={regeneratePlan} disabled={actionInProgress !== null} className="bg-green-500/20 border border-green-500/50 text-green-300 px-4 py-2 rounded-xl hover:bg-green-500/30 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                  <RefreshCw className={`w-4 h-4 ${actionInProgress === 'generate' ? 'animate-spin' : ''}`} />
+                  {actionInProgress === 'generate' ? 'Generating...' : "Next Week's Plan"}
+                </button>
+              )}
+              <button disabled={actionInProgress !== null} className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-4 py-2 rounded-xl hover:bg-white/20 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 <Download className="w-4 h-4" />
                 Export
+              </button>
+              <button 
+                onClick={handleDeletePlan} 
+                disabled={actionInProgress !== null}
+                className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-2 rounded-xl hover:bg-red-500/30 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 className="w-4 h-4" />
+                {actionInProgress === 'delete' ? 'Deleting...' : 'Delete Plan'}
               </button>
             </div>
           </div>
 
-          {/* Progress Bar */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -193,7 +242,6 @@ export default function Plan() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 bg-white/10 backdrop-blur-lg rounded-2xl p-2 mb-8 border border-white/20">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
@@ -219,7 +267,6 @@ export default function Plan() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Day Selector */}
           <div className="lg:col-span-1">
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 sticky top-6">
               <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
@@ -245,7 +292,6 @@ export default function Plan() {
             </div>
           </div>
 
-          {/* Main Content */}
           <div className="lg:col-span-3">
             {activeTab === 'overview' && currentDay && (
               <div className="space-y-6">
@@ -350,7 +396,7 @@ export default function Plan() {
                         {exercise.weights && exercise.weights.length > 0 && (
                           <div className="mt-4">
                             <h5 className="text-white font-medium mb-2">Weight per Set</h5>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               {exercise.weights.map((weight, setIndex) => (
                                 <div key={setIndex} className="bg-blue-500/20 rounded-lg px-3 py-2 border border-blue-500/30">
                                   <span className="text-blue-100 text-sm">Set {setIndex + 1}: {weight > 0 ? `${weight}kg` : 'Bodyweight'}</span>

@@ -7,6 +7,7 @@ from app.security import get_current_user
 from typing import Dict, List
 from datetime import datetime, timedelta, timezone
 from app.services.dashboard_services import (fetch_tasks_today, fetch_tasks_week, fetch_tasks_month, fetch_calories_burned)
+from app.services.progress_services import fetch_total_workouts, hours_trained
 
 router = APIRouter(
     prefix="/progress",
@@ -31,14 +32,20 @@ async def get_my_progress(
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
         tasks_percent = fetch_tasks_today()
         calories_burnt = fetch_calories_burned("daily")
+        total_workouts = fetch_total_workouts(start_date)
+        total_hours = hours_trained(start_date)
     elif period == "weekly":
         start_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         tasks_percent = fetch_tasks_week()
         calories_burnt = fetch_calories_burned("weekly")
+        total_workouts = fetch_total_workouts(start_date)
+        total_hours = hours_trained(start_date)
     else: # monthly
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         tasks_percent = fetch_tasks_month()
         calories_burnt = fetch_calories_burned("monthly")
+        total_workouts = fetch_total_workouts(start_date)
+        total_hours = hours_trained(start_date)
 
     # --- Match stage for all pipelines ---
     match_stage = {
@@ -108,6 +115,8 @@ async def get_my_progress(
         "summary": total_summary,
         "chart_data": chart_data_result,
         "tasks_completion_percent": tasks_percent,
-        "calories_burned": calories_burnt
+        "calories_burned": calories_burnt,
+        "total_workouts": total_workouts,
+        "total_hours_trained": total_hours
     }
 

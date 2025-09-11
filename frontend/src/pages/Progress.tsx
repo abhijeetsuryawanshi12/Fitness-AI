@@ -22,6 +22,23 @@ import {
 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
 
+// Type definition for the data coming from your FastAPI backend
+type ProgressApiResponse = {
+  summary: {
+    total_calories: number;
+    total_protein_g: number;
+    total_carbs_g: number;
+  };
+  chart_data: Array<{
+    time_label: string;
+    calories: number;
+  }>;
+  tasks_completion_percent: number;
+  calories_burned: number;
+  total_workouts: number;
+  total_hours_trained: number;
+}
+
 type Summary = { 
   total_calories: number
   total_protein_g: number 
@@ -49,7 +66,7 @@ type ProgressData = {
   achievements: Array<{ id: string; title: string; description: string; unlocked: boolean; date?: string }>
 }
 
-// Mock data generator (logic unchanged)
+// Mock data generator for UI elements NOT provided by the current API endpoint
 const generateMockData = (period: string): ProgressData => {
   const workoutTrends = Array.from({ length: 12 }, (_, i) => ({
     date: new Date(Date.now() - (11 - i) * 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -72,15 +89,15 @@ const generateMockData = (period: string): ProgressData => {
   }))
 
   return {
-    summary: {
-      total_calories: 1850,
-      total_protein_g: 125,
-      total_carbs_g: 230
+    summary: { // This will be overwritten by API data
+      total_calories: 0,
+      total_protein_g: 0,
+      total_carbs_g: 0
     },
-    workoutStats: {
-      totalWorkouts: 48,
-      totalHours: 72,
-      caloriesBurned: 12500,
+    workoutStats: { // Parts of this will be overwritten by API data
+      totalWorkouts: 0,
+      totalHours: 0,
+      caloriesBurned: 0,
       currentStreak: 12,
       longestStreak: 21
     },
@@ -97,7 +114,7 @@ const generateMockData = (period: string): ProgressData => {
       { exercise: 'Deadlift', current: 275, previous: 260 },
       { exercise: 'Overhead Press', current: 135, previous: 125 }
     ],
-    nutritionTrends,
+    nutritionTrends, // This will be overwritten by API data
     achievements: [
       { id: '1', title: 'First Week', description: 'Complete your first week of workouts', unlocked: true, date: '2024-07-15' },
       { id: '2', title: 'Consistency King', description: '10 day workout streak', unlocked: true, date: '2024-08-01' },
@@ -136,25 +153,70 @@ const CounterAnimation = ({ end, duration = 2000, suffix = '' }: { end: number; 
 export default function FitnessProgress() {
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
   const [data, setData] = useState<ProgressData | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // Start with loading true
   const [dateRange, setDateRange] = useState('This Week')
   const [showFilters, setShowFilters] = useState(false)
   const [selectedMetric, setSelectedMetric] = useState('workouts')
 
-  const load = async (p = period) => {
-    setLoading(true)
-    await new Promise(resolve => setTimeout(resolve, 800))
-    const mockData = generateMockData(p)
-    setData(mockData)
-    setLoading(false)
+  const load = async (p: typeof period = period) => {
+    setLoading(true);
+    try {
+      // 1. Fetch real data from the API
+      // Note: Assumes a proxy is set up to route `/api` to your FastAPI backend.
+      // Your backend requires authentication, so ensure a valid token is being sent
+      // (e.g., via a cookie, or by adding an 'Authorization' header here).
+      const response = await fetch(`/api/progress/me?period=${p}`);
+
+      if (!response.ok) {
+        throw new Error(`Network response was not ok: ${response.statusText}`);
+      }
+      const apiData: ProgressApiResponse = await response.json();
+
+      // 2. Generate mock data for UI components not covered by the API
+      const mockData = generateMockData(p);
+
+      // 3. Merge real data into the mock data structure
+      const mergedData: ProgressData = {
+        ...mockData, // Use mock data as a base for components not yet backed by the API
+        summary: apiData.summary, // Use real summary data
+        workoutStats: {
+          ...mockData.workoutStats, // Keep mock streak data
+          totalWorkouts: apiData.total_workouts, // Use real total workouts
+          totalHours: apiData.total_hours_trained, // Use real hours trained
+          caloriesBurned: apiData.calories_burned, // Use real calories burned
+        },
+        // Transform API chart data to fit the frontend's expected format
+        nutritionTrends: apiData.chart_data.map(item => ({
+            date: new Date(item.time_label).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            calories: item.calories,
+            target: 2200, // Target is not from API, so we keep a placeholder
+            protein: 0, // Not provided per-day by this API endpoint
+            carbs: 0,   // Not provided per-day by this API endpoint
+            fat: 0      // Not provided per-day by this API endpoint
+        }))
+      };
+      
+      setData(mergedData);
+    } catch (error) {
+      console.error("Failed to fetch progress data:", error);
+      // Fallback to mock data if the API call fails
+      setData(generateMockData(p));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load()
-  }, [])
+  }, []) // Remove 'load' from dependency array to prevent re-triggering
 
   const handlePeriodChange = (newPeriod: typeof period) => {
     setPeriod(newPeriod)
+    // Update the user-facing date range label based on the period
+    if (newPeriod === 'daily') setDateRange('Today');
+    else if (newPeriod === 'weekly') setDateRange('This Week');
+    else if (newPeriod === 'monthly') setDateRange('This Month');
+    
     load(newPeriod)
   }
 
@@ -165,7 +227,10 @@ export default function FitnessProgress() {
   const macroData = data ? [
     { name: 'Protein', value: data.summary.total_protein_g, color: '#3B82F6' },
     { name: 'Carbs', value: data.summary.total_carbs_g, color: '#10B981' },
-    { name: 'Fat', value: Math.round(data.summary.total_calories * 0.25 / 9), color: '#F59E0B' }
+    // Fat is not in the API response, so we can estimate or omit it.
+    // Let's omit it for data accuracy. Or we can calculate it if we have a target breakdown.
+    // For now, let's keep the mock calculation for a complete chart.
+    { name: 'Fat', value: Math.round((data.summary.total_calories * 0.25) / 9), color: '#F59E0B' }
   ] : []
 
   const workoutCategories = [
@@ -210,19 +275,10 @@ export default function FitnessProgress() {
               </button>
               
               {showFilters && (
-                <div className="absolute top-full mt-2 right-0 bg-slate-800/80 backdrop-blur-lg rounded-xl shadow-lg border border-white/20 p-2 min-w-[150px] z-10">
-                  {['Today', 'This Week', 'This Month', 'Last 3 Months', 'Custom Range'].map((range) => (
-                    <button
-                      key={range}
-                      onClick={() => {
-                        setDateRange(range)
-                        setShowFilters(false)
-                      }}
-                      className="block w-full text-left text-slate-200 px-3 py-2 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
-                    >
-                      {range}
-                    </button>
-                  ))}
+                 <div className="absolute top-full mt-2 right-0 bg-slate-800/80 backdrop-blur-lg rounded-xl shadow-lg border border-white/20 p-2 min-w-[150px] z-10">
+                  <button onClick={() => { handlePeriodChange('daily'); setShowFilters(false); }} className="block w-full text-left text-slate-200 px-3 py-2 hover:bg-white/10 hover:text-white rounded-lg transition-colors">Today</button>
+                  <button onClick={() => { handlePeriodChange('weekly'); setShowFilters(false); }} className="block w-full text-left text-slate-200 px-3 py-2 hover:bg-white/10 hover:text-white rounded-lg transition-colors">This Week</button>
+                  <button onClick={() => { handlePeriodChange('monthly'); setShowFilters(false); }} className="block w-full text-left text-slate-200 px-3 py-2 hover:bg-white/10 hover:text-white rounded-lg transition-colors">This Month</button>
                 </div>
               )}
             </div>
@@ -271,6 +327,9 @@ export default function FitnessProgress() {
           ))}
         </div>
 
+        {/* --- The rest of the component remains unchanged --- */}
+        {/* --- It will now use the merged real + mock data --- */}
+        
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Left Column - Workout Progress */}
