@@ -1,4 +1,4 @@
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -11,24 +11,13 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# This fix is not strictly necessary here if plan_agent is imported first,
-# but it's good practice to keep it for robustness.
-from langchain_core.caches import BaseCache
-# ChatOpenAI.model_rebuild()
-
-# Initialize the language model using OpenRouter
-# We use the ChatOpenAI class because OpenRouter is compatible with the OpenAI API
-llm = ChatOpenAI(
-  model="deepseek/deepseek-chat-v3.1:free",
-  api_key=os.environ.get("OPENROUTER_API_KEY"),
-  base_url="https://openrouter.ai/api/v1",
-  default_headers={
-        "HTTP-Referer": "http://localhost",
-        "X-Title": "Fitness AI"
-    },
-  temperature=0.7
+# Initialize the language model using Google Gemini
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    model_provider="google_genai",
+    google_api_key=os.environ.get("GEMINI_API_KEY"),
+    temperature=0.7
 )
-
 
 # Create a new prompt template that includes context for the RAG technique.
 # This template is designed for conversation and includes a placeholder for memory,
