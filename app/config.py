@@ -12,6 +12,7 @@ class Settings:
     MONGODB_URI: str = os.getenv("MONGODB_URI")
     DB_NAME: str = os.getenv("DB_NAME", "user_fitness")
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
+    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY")
 
     # --- NEW: Keys for Voice Services ---
     ASSEMBLYAI_API_KEY: str = os.getenv("ASSEMBLYAI_API_KEY")

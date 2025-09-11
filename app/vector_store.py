@@ -1,5 +1,5 @@
 import os
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
@@ -7,10 +7,11 @@ from app.config import settings
 from typing import List
 import chromadb
 
-# Initialize the embedding model
-embedding_model = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001", 
-    google_api_key=settings.GEMINI_API_KEY
+# Initialize the embedding model using a freely available model from Hugging Face.
+# LangChain will handle downloading and caching the model automatically.
+embedding_model = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    model_kwargs={'device': 'cpu'} # Explicitly use CPU, can be changed to 'cuda' if a GPU is available
 )
 
 # Initialize ChromaDB client
