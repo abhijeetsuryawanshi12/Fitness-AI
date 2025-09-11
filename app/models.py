@@ -1,3 +1,4 @@
+# app/models.py
 from pydantic import BaseModel, Field, ConfigDict, GetCoreSchemaHandler, model_validator, EmailStr
 from pydantic_core import CoreSchema, core_schema
 from typing import Optional, Union, Dict, Literal, Any, List
@@ -220,6 +221,27 @@ class CreateTask(BaseModel):
 
 class TaskUpdate(BaseModel):
     completed: bool
+
+# --- NEW MODELS FOR PROGRESS TRACKING ---
+class WeightLog(BaseModel):
+    id: Optional[PyObjectId] = Field(None, alias="_id")
+    user_id: str
+    weight: float = Field(..., gt=0, description="Weight in kilograms")
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={"example": {
+            "user_id": "60d5f3f7e6c4b4a3e8e1f4b1",
+            "weight": 65.5,
+            "date": "2025-07-20T10:00:00Z"
+        }}
+    )
+
+class WeightLogCreate(BaseModel):
+    weight: float = Field(..., gt=0, description="Weight in kilograms")
+    date_today: date = Field(default_factory=date.today, description="The date of the weight log, defaults to today.")
 
 # --- CHAT MODELS (UPDATED) ---
 class ChatRequest(BaseModel):
