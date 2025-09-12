@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 import { 
   Calendar, 
   Download, 
@@ -19,30 +19,34 @@ import {
   ChevronDown,
   Star,
   Camera
-} from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
+} from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
+import api from '@/lib/api'; // Import the configured API client
 
-// Type definition for the data coming from your FastAPI backend
+// The type definition for `ProgressApiResponse` was incorrect.
+// This is the correct structure based on the `/progress/me` endpoint.
 type ProgressApiResponse = {
   summary: {
     total_calories: number;
     total_protein_g: number;
     total_carbs_g: number;
+    total_fats_g: number;
   };
-  chart_data: Array<{
-    time_label: string;
-    calories: number;
-  }>;
   tasks_completion_percent: number;
-  calories_burned: number;
   total_workouts: number;
   total_hours_trained: number;
-}
+  body_metrics: {
+    current_weight: number | null;
+    weight_change: number;
+    weight_history: Array<{ date: string; weight: number }>;
+  };
+};
 
 type Summary = { 
   total_calories: number
   total_protein_g: number 
   total_carbs_g: number 
+  total_fats_g: number
 }
 
 type ProgressData = {
@@ -92,7 +96,8 @@ const generateMockData = (period: string): ProgressData => {
     summary: { // This will be overwritten by API data
       total_calories: 0,
       total_protein_g: 0,
-      total_carbs_g: 0
+      total_carbs_g: 0,
+      total_fats_g: 0
     },
     workoutStats: { // Parts of this will be overwritten by API data
       totalWorkouts: 0,
@@ -114,7 +119,7 @@ const generateMockData = (period: string): ProgressData => {
       { exercise: 'Deadlift', current: 275, previous: 260 },
       { exercise: 'Overhead Press', current: 135, previous: 125 }
     ],
-    nutritionTrends, // This will be overwritten by API data
+    nutritionTrends,
     achievements: [
       { id: '1', title: 'First Week', description: 'Complete your first week of workouts', unlocked: true, date: '2024-07-15' },
       { id: '2', title: 'Consistency King', description: '10 day workout streak', unlocked: true, date: '2024-08-01' },
@@ -161,45 +166,41 @@ export default function FitnessProgress() {
   const load = async (p: typeof period = period) => {
     setLoading(true);
     try {
-      // 1. Fetch real data from the API
-      // Note: Assumes a proxy is set up to route `/api` to your FastAPI backend.
-      // Your backend requires authentication, so ensure a valid token is being sent
-      // (e.g., via a cookie, or by adding an 'Authorization' header here).
-      const response = await fetch(`/api/progress/me?period=${p}`);
+      // 1. Fetch real data from the API using the pre-configured axios instance.
+      // This automatically handles the base URL and authentication headers.
+      const { data: apiData }: { data: ProgressApiResponse } = await api.get('/progress/me', {
+        params: { period: p }
+      });
 
-      if (!response.ok) {
-        throw new Error(`Network response was not ok: ${response.statusText}`);
-      }
-      const apiData: ProgressApiResponse = await response.json();
-
-      // 2. Generate mock data for UI components not covered by the API
+      // 2. Generate mock data for UI components not yet covered by the API
       const mockData = generateMockData(p);
 
-      // 3. Merge real data into the mock data structure
+      // 3. Merge real data from the API into our state structure
       const mergedData: ProgressData = {
-        ...mockData, // Use mock data as a base for components not yet backed by the API
-        summary: apiData.summary, // Use real summary data
+        ...mockData, // Use mock data as a base
+        summary: apiData.summary, // Overwrite with real summary data
         workoutStats: {
           ...mockData.workoutStats, // Keep mock streak data
-          totalWorkouts: apiData.total_workouts, // Use real total workouts
-          totalHours: apiData.total_hours_trained, // Use real hours trained
-          caloriesBurned: apiData.calories_burned, // Use real calories burned
+          totalWorkouts: apiData.total_workouts,
+          totalHours: apiData.total_hours_trained,
+          // The API returns consumed calories. We'll use this for the "Calories Burned" card for now.
+          caloriesBurned: apiData.summary.total_calories, 
         },
-        // Transform API chart data to fit the frontend's expected format
-        nutritionTrends: apiData.chart_data.map(item => ({
-            date: new Date(item.time_label).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            calories: item.calories,
-            target: 2200, // Target is not from API, so we keep a placeholder
-            protein: 0, // Not provided per-day by this API endpoint
-            carbs: 0,   // Not provided per-day by this API endpoint
-            fat: 0      // Not provided per-day by this API endpoint
-        }))
+        bodyMetrics: {
+          ...mockData.bodyMetrics, // Keep mock body fat %
+          currentWeight: apiData.body_metrics.current_weight || mockData.bodyMetrics.currentWeight,
+          weightChange: apiData.body_metrics.weight_change,
+          weightHistory: apiData.body_metrics.weight_history,
+        },
+        // The API does not return per-day nutrition trends for the chart,
+        // so we fall back to the mock data to avoid errors.
+        nutritionTrends: mockData.nutritionTrends
       };
       
       setData(mergedData);
     } catch (error) {
       console.error("Failed to fetch progress data:", error);
-      // Fallback to mock data if the API call fails
+      // Fallback to mock data if the API call fails, to prevent the UI from crashing
       setData(generateMockData(p));
     } finally {
       setLoading(false);
@@ -208,7 +209,7 @@ export default function FitnessProgress() {
 
   useEffect(() => {
     load()
-  }, []) // Remove 'load' from dependency array to prevent re-triggering
+  }, [])
 
   const handlePeriodChange = (newPeriod: typeof period) => {
     setPeriod(newPeriod)
@@ -227,10 +228,7 @@ export default function FitnessProgress() {
   const macroData = data ? [
     { name: 'Protein', value: data.summary.total_protein_g, color: '#3B82F6' },
     { name: 'Carbs', value: data.summary.total_carbs_g, color: '#10B981' },
-    // Fat is not in the API response, so we can estimate or omit it.
-    // Let's omit it for data accuracy. Or we can calculate it if we have a target breakdown.
-    // For now, let's keep the mock calculation for a complete chart.
-    { name: 'Fat', value: Math.round((data.summary.total_calories * 0.25) / 9), color: '#F59E0B' }
+    { name: 'Fat', value: data.summary.total_fats_g, color: '#F59E0B' }
   ] : []
 
   const workoutCategories = [
@@ -299,7 +297,7 @@ export default function FitnessProgress() {
           {data && [
             { title: 'Total Workouts', value: data.workoutStats.totalWorkouts, icon: Activity, color: 'from-blue-500 to-blue-600', suffix: '' },
             { title: 'Hours Trained', value: data.workoutStats.totalHours, icon: Clock, color: 'from-purple-500 to-purple-600', suffix: 'h' },
-            { title: 'Calories Burned', value: data.workoutStats.caloriesBurned, icon: Flame, color: 'from-red-500 to-red-600', suffix: '' },
+            { title: 'Calories Consumed', value: data.workoutStats.caloriesBurned, icon: Flame, color: 'from-red-500 to-red-600', suffix: '' },
             { title: 'Current Streak', value: data.workoutStats.currentStreak, icon: Target, color: 'from-green-500 to-green-600', suffix: ' days' },
             { title: 'Weight Change', value: Math.abs(data.bodyMetrics.weightChange), icon: Scale, color: 'from-teal-500 to-teal-600', suffix: ' lbs' },
             { title: 'Body Fat', value: data.bodyMetrics.bodyFat || 0, icon: User, color: 'from-indigo-500 to-indigo-600', suffix: '%' }
@@ -326,9 +324,6 @@ export default function FitnessProgress() {
             </div>
           ))}
         </div>
-
-        {/* --- The rest of the component remains unchanged --- */}
-        {/* --- It will now use the merged real + mock data --- */}
         
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

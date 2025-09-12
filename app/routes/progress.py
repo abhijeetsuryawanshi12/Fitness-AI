@@ -4,9 +4,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import User, WeightLog, WeightLogCreate
 from app.security import get_current_user
 from typing import Dict, List, Any
+from app.services.progress_services import fetch_total_workouts, hours_trained, streak_count
 from datetime import datetime, timedelta, timezone, time
-from app.services.dashboard_services import (fetch_tasks_today, fetch_tasks_week, fetch_tasks_month, fetch_calories_burned)
-from app.services.progress_services import fetch_total_workouts, hours_trained
 
 router = APIRouter(
     prefix="/progress",
@@ -15,6 +14,7 @@ router = APIRouter(
 
 WEIGHT_LOGS_COLLECTION = "weight_logs"
 USER_COLLECTION = "users"
+TASK_COLLECTION = "tasks"
 
 @router.post(
     "/log/weight",
@@ -76,27 +76,23 @@ async def get_my_progress(
     user_id_str = str(current_user.id)
     now = datetime.now(timezone.utc)
     
-    # --- Define time range based on the period ---
     if period == "daily":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        tasks_percent = fetch_tasks_today()
-        calories_burnt = fetch_calories_burned("daily")
-        total_workouts = fetch_total_workouts(start_date)
-        total_hours = hours_trained(start_date)
     elif period == "weekly":
         start_date = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        tasks_percent = fetch_tasks_week()
-        calories_burnt = fetch_calories_burned("weekly")
-        total_workouts = fetch_total_workouts(start_date)
-        total_hours = hours_trained(start_date)
     else: # monthly
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        tasks_percent = fetch_tasks_month()
-        calories_burnt = fetch_calories_burned("monthly")
-        total_workouts = fetch_total_workouts(start_date)
-        total_hours = hours_trained(start_date)
 
-    # --- Match stage for diet aggregation ---
+    # --- Task Completion (Consistency) ---
+    total_tasks_cursor = db[TASK_COLLECTION].find({"user_id": user_id_str, "task_date": {"$gte": start_date}})
+    completed_tasks_cursor = db[TASK_COLLECTION].find({"user_id": user_id_str, "task_date": {"$gte": start_date}, "completed": True})
+    
+    total_tasks_count = await db[TASK_COLLECTION].count_documents({"user_id": user_id_str, "task_date": {"$gte": start_date}})
+    completed_tasks_count = await db[TASK_COLLECTION].count_documents({"user_id": user_id_str, "task_date": {"$gte": start_date}, "completed": True})
+    
+    tasks_completion_percent = (completed_tasks_count / total_tasks_count * 100) if total_tasks_count > 0 else 0
+
+    # --- Nutritional Summary (Macro Breakdown) ---
     match_stage = {
         "$match": {
             "user_id": user_id_str,
@@ -105,23 +101,13 @@ async def get_my_progress(
             "task_date": {"$gte": start_date}
         }
     }
-
-    # --- Aggregation Pipeline for Nutritional Summary ---
     summary_pipeline = [
         match_stage,
-        {"$group": {"_id": None, "total_calories": {"$sum": "$details.nutrition_facts.calories"}, "total_protein_g": {"$sum": "$details.nutrition_facts.protein"}, "total_carbs_g": {"$sum": "$details.nutrition_facts.carbs"}}},
-        {"$project": {"_id": 0, "total_calories": {"$ifNull": ["$total_calories", 0]}, "total_protein_g": {"$ifNull": ["$total_protein_g", 0]}, "total_carbs_g": {"$ifNull": ["$total_carbs_g", 0]}}}
+        {"$group": {"_id": None, "total_calories": {"$sum": "$details.nutrition_facts.calories"}, "total_protein_g": {"$sum": "$details.nutrition_facts.protein"}, "total_carbs_g": {"$sum": "$details.nutrition_facts.carbs"}, "total_fats_g": {"$sum": "$details.nutrition_facts.total_fat"}}},
+        {"$project": {"_id": 0, "total_calories": {"$ifNull": ["$total_calories", 0]}, "total_protein_g": {"$ifNull": ["$total_protein_g", 0]}, "total_carbs_g": {"$ifNull": ["$total_carbs_g", 0]}, "total_fats_g": {"$ifNull": ["$total_fats_g", 0]}}}
     ]
 
-    # --- Aggregation Pipeline for Calorie Chart Data ---
-    chart_pipeline = [
-        match_stage,
-        {"$group": {"_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$task_date", "timezone": "UTC"}}, "calories": {"$sum": "$details.nutrition_facts.calories"}}},
-        {"$sort": {"_id": 1}},
-        {"$project": {"_id": 0, "time_label": "$_id", "calories": {"$ifNull": ["$calories", 0]}}}
-    ]
-
-    # --- Fetch Weight Progress Data ---
+    # --- Weight History ---
     weight_logs_cursor = db[WEIGHT_LOGS_COLLECTION].find(
         {"user_id": user_id_str, "date": {"$gte": start_date}}
     ).sort("date", 1)
@@ -135,27 +121,63 @@ async def get_my_progress(
     if len(weight_logs) > 1:
         weight_change = round(weight_logs[-1]['weight'] - weight_logs[0]['weight'], 2)
 
-    # --- Execute Pipelines ---
+    # --- Execute Aggregations ---
     summary_result = await db.tasks.aggregate(summary_pipeline).to_list(length=1)
-    chart_data_result = await db.tasks.aggregate(chart_pipeline).to_list(length=None)
-
-    # --- Format Results ---
-    total_summary = summary_result[0] if summary_result else {"total_calories": 0, "total_protein_g": 0, "total_carbs_g": 0}
+    total_summary = summary_result[0] if summary_result else {"total_calories": 0, "total_protein_g": 0, "total_carbs_g": 0, "total_fats_g": 0}
 
     return {
         "summary": {
             "total_calories": round(total_summary["total_calories"]),
             "total_protein_g": round(total_summary["total_protein_g"]),
-            "total_carbs_g": round(total_summary["total_carbs_g"])
+            "total_carbs_g": round(total_summary["total_carbs_g"]),
+            "total_fats_g": round(total_summary["total_fats_g"])
         },
-        "chart_data": chart_data_result,
-        "tasks_completion_percent": tasks_percent,
-        "calories_burned": calories_burnt,
-        "total_workouts": total_workouts,
-        "total_hours_trained": total_hours,
+        "tasks_completion_percent": round(tasks_completion_percent),
+        "total_workouts": fetch_total_workouts(start_date),
+        "total_hours_trained": round(hours_trained(start_date), 2),
         "body_metrics": {
             "current_weight": current_user.weight,
             "weight_change": weight_change,
             "weight_history": weight_history_formatted,
         }
     }
+
+
+@router.get(
+    "/exercise/{exercise_name}",
+    response_model=List[Dict[str, Any]],
+    summary="Get performance history for a specific exercise"
+)
+async def get_exercise_history(
+    exercise_name: str = Path(..., description="The name of the exercise to track."),
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Retrieves all completed workout tasks for a specific exercise to track strength
+    progress over time.
+    """
+    user_id_str = str(current_user.id)
+    
+    pipeline = [
+        {"$match": {
+            "user_id": user_id_str,
+            "name": {"$regex": f"^{exercise_name}$", "$options": "i"}, # Case-insensitive match
+            "type": "workout",
+            "completed": True,
+            "performance": {"$exists": True, "$ne": None}
+        }},
+        {"$sort": {"task_date": 1}},
+        {"$project": {
+            "_id": 0,
+            "date": "$task_date",
+            "performance": "$performance"
+        }}
+    ]
+    
+    history = await db.tasks.aggregate(pipeline).to_list(length=None)
+    
+    if not history:
+        raise HTTPException(status_code=404, detail="No performance history found for this exercise.")
+        
+    return history

@@ -173,14 +173,13 @@ class Task(BaseModel):
     name: str = Field(..., description="The name/title of the task, e.g., 'Bench Press' or 'Breakfast'.")
     details: Dict[str, Any] = Field(default={}, description="A dictionary containing detailed information, like instructions.")
     
-    # --- MODIFIED: Expanded type to match frontend ---
     type: Literal["workout", "diet", "hydration", "sleep", "habit"]
     
-    # --- MODIFIED: Added priority to match frontend ---
     priority: Literal["high", "medium", "low"] = Field("medium", description="Priority of the task.")
     notified: bool = Field(default=False, description="Whether a push notification has been sent for this task.")
     
     completed: bool = False
+    performance: Optional[Dict[str, Any]] = Field(None, description="Actual performance for workout tasks, e.g., {'sets': 3, 'reps': [8, 8, 6], 'weights': [50, 50, 50]}")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(
@@ -195,12 +194,12 @@ class Task(BaseModel):
             "type": "workout", 
             "priority": "high",
             "completed": False,
+            "performance": {"sets": 3, "reps": [8, 8, 7], "weights": [50, 50, 45]},
             "notified": False
         }}
     )
 
 # --- NEW MODEL FOR CREATING TASKS ---
-# This model is used for the request body of the POST and PUT endpoints.
 class CreateTask(BaseModel):
     name: str = Field(..., description="The name/title of the task.")
     task_date: date # Use 'date' for input, which is simpler (YYYY-MM-DD)
@@ -219,8 +218,9 @@ class CreateTask(BaseModel):
         }}
     )
 
-class TaskUpdate(BaseModel):
-    completed: bool
+# --- NEW: MODEL FOR UPDATING TASK PERFORMANCE ---
+class TaskPerformanceUpdate(BaseModel):
+    performance: Dict[str, Any]
 
 # --- NEW MODELS FOR PROGRESS TRACKING ---
 class WeightLog(BaseModel):

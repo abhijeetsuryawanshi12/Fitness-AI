@@ -397,7 +397,7 @@ function MetricsSection() {
 
         // Extract the completion percentage from the real API response
         const completionPercent = progressRes.data.tasks_completion_percent || 0;
-        const caloriesBurnt = progressRes.data.calories_burned || 0;
+        const caloriesBurnt = progressRes.data.summary.total_calories || 0;
 
         setMetricsData({
           calories: {
