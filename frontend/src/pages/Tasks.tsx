@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, Search, Filter, Calendar, Clock, Target, Droplets, Utensils, Dumbbell, Moon, Check, X, Edit2, Trash2, Star } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Search, Filter, Calendar, Clock, Target, Droplets, Utensils, Dumbbell, Moon, Check, X, Edit2, Trash2, Star, Save } from 'lucide-react'
 import api from '@/lib/api' // Import the actual API client
 
 // Updated Task type to match the backend model
@@ -8,6 +8,9 @@ type Task = {
   name: string
   details?: {
     instructions?: string
+    sets?: number
+    reps?: number
+    weights?: number[]
     [key: string]: any // For other details like nutrition_facts, etc.
   }
   type: 'workout' | 'diet' | 'hydration' | 'sleep' | 'habit' | string
@@ -15,6 +18,11 @@ type Task = {
   completed: boolean
   task_date: string // Comes as an ISO string "YYYY-MM-DDTHH:mm:ss"
   time?: string
+  performance?: {
+    sets: number
+    reps: (number | string)[]
+    weights: (number | string)[]
+  }
 }
 
 // Form data remains similar for the UI
@@ -26,6 +34,98 @@ type TaskFormData = {
   task_date: string // Will be in "YYYY-MM-DD" format for the input
   time: string
 }
+
+type PerformanceLog = {
+  sets: number
+  reps: (number | string)[]
+  weights: (number | string)[]
+}
+
+// --- Performance Log Modal Component ---
+const PerformanceLogModal = ({ task, onClose, onSave }) => {
+  const plannedSets = task.details?.sets || 1;
+  const initialPerformance = task.performance || {
+    sets: plannedSets,
+    reps: task.details?.reps ? Array(plannedSets).fill(task.details.reps) : Array(plannedSets).fill(''),
+    weights: task.details?.weights || Array(plannedSets).fill(''),
+  };
+
+  const [performance, setPerformance] = useState<PerformanceLog>(initialPerformance);
+  const [saving, setSaving] = useState(false);
+
+  const handleInputChange = (index, field, value) => {
+    const newValues = [...performance[field]];
+    newValues[index] = value;
+    setPerformance(prev => ({ ...prev, [field]: newValues }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    // Convert reps and weights to numbers, keeping them as is if empty or not a number
+    const processedPerformance = {
+      ...performance,
+      reps: performance.reps.map(r => r === '' ? '' : Number(r)),
+      weights: performance.weights.map(w => w === '' ? '' : Number(w)),
+    };
+    await onSave(task._id, processedPerformance);
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+      <div className="bg-slate-800/80 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl w-full max-w-lg">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold">Log Performance</h2>
+              <p className="text-slate-300">{task.name}</p>
+            </div>
+            <button onClick={onClose} className="p-2 text-slate-400 hover:bg-white/10 hover:text-white rounded-lg transition-colors"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            <div className="grid grid-cols-4 gap-4 text-sm font-semibold text-slate-400 px-3">
+              <span className="col-span-1">Set</span>
+              <span className="col-span-1">Planned</span>
+              <span className="col-span-1">Reps</span>
+              <span className="col-span-1">Weight (kg)</span>
+            </div>
+            {Array.from({ length: performance.sets }).map((_, i) => (
+              <div key={i} className="grid grid-cols-4 gap-4 items-center bg-white/5 p-3 rounded-lg">
+                <div className="font-medium text-center">{i + 1}</div>
+                <div className="text-sm text-slate-400 text-center">
+                  {task.details?.reps}r @ {task.details?.weights?.[i] || task.details?.weights?.[0] || 'N/A'}kg
+                </div>
+                <div>
+                  <input
+                    type="number"
+                    value={performance.reps[i]}
+                    onChange={(e) => handleInputChange(i, 'reps', e.target.value)}
+                    className="w-full bg-white/10 border border-white/20 rounded-md px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="number"
+                    value={performance.weights[i]}
+                    onChange={(e) => handleInputChange(i, 'weights', e.target.value)}
+                    className="w-full bg-white/10 border border-white/20 rounded-md px-2 py-1 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-end space-x-3 pt-6">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-200 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg transition-colors">Cancel</button>
+            <button type="button" onClick={handleSave} disabled={saving} className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-lg transition-all flex items-center gap-2">
+              {saving ? 'Saving...' : <><Save className="w-4 h-4" /> Save & Complete</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 const getTypeIcon = (type: string) => {
   switch (type) {
@@ -47,7 +147,6 @@ const getPriorityColor = (priority: string) => {
 }
 
 const formatDate = (dateString: string) => {
-  // Handle both ISO string and YYYY-MM-DD
   const date = new Date(dateString)
   return {
     dayName: date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
@@ -67,6 +166,7 @@ export default function WeeklyTasks() {
   })
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [loggingPerformanceTask, setLoggingPerformanceTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -86,7 +186,6 @@ export default function WeeklyTasks() {
     return date.toISOString().split('T')[0]
   })
 
-  // --- UPDATED: Load tasks from the backend ---
   const loadTasks = async () => {
     setLoading(true)
     try {
@@ -96,7 +195,6 @@ export default function WeeklyTasks() {
       setTasks(data)
     } catch (error) {
       console.error('Error loading tasks:', error)
-      // Optionally, set an error state to show a message to the user
     }
     setLoading(false)
   }
@@ -126,19 +224,15 @@ export default function WeeklyTasks() {
     return Math.round((completed / dayTasks.length) * 100)
   }
 
-  // --- UPDATED: Create Task Handler ---
   const handleCreateTask = async () => {
     if (!taskForm.name.trim() || !taskForm.task_date) return
-
     const newTaskPayload = {
       name: taskForm.name,
       type: taskForm.type,
       priority: taskForm.priority,
       task_date: taskForm.task_date,
-      details: { instructions: taskForm.description }, // Structure description into details
-      // time can be added to details if needed
+      details: { instructions: taskForm.description },
     }
-    
     try {
       const { data } = await api.post('/tasks/', newTaskPayload)
       setTasks(prev => [...prev, data])
@@ -149,10 +243,8 @@ export default function WeeklyTasks() {
     }
   }
 
-  // --- UPDATED: Update Task Handler ---
   const handleUpdateTask = async () => {
     if (!editingTask || !taskForm.name.trim()) return
-
     const updatedTaskPayload = {
       name: taskForm.name,
       type: taskForm.type,
@@ -160,7 +252,6 @@ export default function WeeklyTasks() {
       task_date: taskForm.task_date,
       details: { instructions: taskForm.description },
     }
-    
     try {
       const { data: updatedTask } = await api.put(`/tasks/${editingTask._id}`, updatedTaskPayload)
       setTasks(prev => prev.map(task => 
@@ -174,10 +265,8 @@ export default function WeeklyTasks() {
     }
   }
 
-  // --- UPDATED: Delete Task Handler ---
   const handleDeleteTask = async (taskId: string) => {
     if (!confirm('Are you sure you want to delete this task?')) return
-    
     try {
       await api.delete(`/tasks/${taskId}`)
       setTasks(prev => prev.filter(task => task._id !== taskId))
@@ -186,17 +275,35 @@ export default function WeeklyTasks() {
     }
   }
 
-  // --- UPDATED: Toggle Completion Handler ---
+  // --- REVISED: Handles initial click on completion button ---
   const handleToggleCompletion = async (task: Task) => {
-    try {
-      const { data: updatedTask } = await api.put(`/tasks/${task._id}/toggle_completion`)
-      setTasks(prev => prev.map(t => 
-        t._id === task._id ? updatedTask : t
-      ))
-    } catch (error) {
-      console.error('Error toggling task:', error)
+    // If it's an INCOMPLETE workout task, open the modal to log performance.
+    if (task.type === 'workout' && !task.completed) {
+      setLoggingPerformanceTask(task);
+      return;
     }
-  }
+
+    // For all other cases (completed workouts, other task types), just toggle.
+    try {
+      const { data: updatedTask } = await api.put(`/tasks/${task._id}/toggle_completion`);
+      setTasks(prev => prev.map(t => t._id === task._id ? updatedTask : t));
+    } catch (error) {
+      console.error('Error toggling task:', error);
+    }
+  };
+
+  // --- NEW: Handles saving performance data from the modal ---
+  const handleSavePerformanceAndComplete = async (taskId: string, performanceData: PerformanceLog) => {
+    try {
+      const payload = { performance: performanceData };
+      const { data: updatedTask } = await api.put(`/tasks/${taskId}/toggle_completion`, payload);
+      
+      setTasks(prev => prev.map(t => t._id === taskId ? updatedTask : t));
+      setLoggingPerformanceTask(null); // Close the modal on success
+    } catch (error) {
+        console.error('Error saving performance data:', error);
+    }
+  };
 
   const resetTaskForm = () => {
     setTaskForm({
@@ -214,11 +321,10 @@ export default function WeeklyTasks() {
       setEditingTask(task)
       setTaskForm({
         name: task.name,
-        // Extract description from details, defaulting to an empty string
         description: task.details?.instructions || '',
         type: task.type,
         priority: task.priority,
-        task_date: task.task_date.split('T')[0], // Use only the date part for the input
+        task_date: task.task_date.split('T')[0],
         time: task.time || ''
       })
     } else {
@@ -257,11 +363,9 @@ export default function WeeklyTasks() {
     )
   }
   
-  // The rest of the JSX remains largely the same, but with one key change in the task mapping:
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 text-white">
       <div className="max-w-7xl mx-auto">
-        {/* Header and Controls JSX (unchanged) */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
             <div>
@@ -309,7 +413,6 @@ export default function WeeklyTasks() {
           </div>
         </div>
         
-        {/* Weekly Task Board */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
           {weekDays.map((date) => {
             const dayTasks = getTasksForDay(date)
@@ -349,7 +452,6 @@ export default function WeeklyTasks() {
                       </div>
                       <div className={`${task.completed ? 'line-through text-slate-500' : 'text-white'}`}>
                         <div className="font-medium text-sm mb-1">{task.name}</div>
-                        {/* MODIFIED: Display description from task.details */}
                         {task.details?.instructions && <div className="text-xs text-slate-400 mb-2">{task.details.instructions}</div>}
                         <div className="flex items-center justify-between">
                           <span className={`inline-block px-2 py-0.5 rounded-full text-xs border ${getPriorityColor(task.priority)}`}>{task.priority}</span>
@@ -370,7 +472,6 @@ export default function WeeklyTasks() {
           })}
         </div>
         
-        {/* Task Modal JSX (unchanged) */}
         {showTaskModal && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
             <div className="bg-slate-800/80 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl w-full max-w-md">
@@ -426,6 +527,14 @@ export default function WeeklyTasks() {
               </div>
             </div>
           </div>
+        )}
+        
+        {loggingPerformanceTask && (
+          <PerformanceLogModal 
+            task={loggingPerformanceTask}
+            onClose={() => setLoggingPerformanceTask(null)}
+            onSave={handleSavePerformanceAndComplete} 
+          />
         )}
       </div>
     </div>
