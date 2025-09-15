@@ -2,6 +2,8 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from typing import List, Dict, Any
 
 load_dotenv()
 
@@ -75,4 +77,56 @@ def streak_count(last_completed_date: datetime) -> int:
     A streak is defined as consecutive days with at least one completed task.
     """
 
+
+async def calculate_exercise_volume_history(
+    db: AsyncIOMotorDatabase, user_id: str, exercise_name: str
+) -> List[Dict[str, Any]]:
+    """
+    Calculates the total workout volume (sets * reps * weight) for a specific
+    exercise over time using a MongoDB aggregation pipeline.
+
+    Args:
+        db: The database instance.
+        user_id: The ID of the user.
+        exercise_name: The name of the exercise to track.
+
+    Returns:
+        A list of dictionaries, each containing the date and total volume.
+    """
+    pipeline = [
+        {
+            "$match": {
+                "user_id": user_id,
+                "name": {"$regex": f"^{exercise_name}$", "$options": "i"},
+                "type": "workout",
+                "completed": True,
+                "performance": {"$exists": True, "$ne": None}
+            }
+        },
+        {
+            "$sort": {"task_date": 1}
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "date": "$task_date",
+                "volume": {
+                    "$sum": {
+                        "$map": {
+                            "input": {"$range": [0, {"$ifNull": ["$performance.sets", 0]}]},
+                            "as": "i",
+                            "in": {
+                                "$multiply": [
+                                    {"$ifNull": [{"$arrayElemAt": ["$performance.reps", "$$i"]}, 0]},
+                                    {"$ifNull": [{"$arrayElemAt": ["$performance.weights", "$$i"]}, 0]}
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
     
+    history = await db.tasks.aggregate(pipeline).to_list(length=None)
+    return history

@@ -18,7 +18,8 @@ import {
   Filter,
   ChevronDown,
   Star,
-  Camera
+  Camera,
+  Search // <-- ADDED THIS IMPORT
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 import api from '@/lib/api'; // Import the configured API client
@@ -163,6 +164,11 @@ export default function FitnessProgress() {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedMetric, setSelectedMetric] = useState('workouts')
 
+  const [exerciseQuery, setExerciseQuery] = useState('Bench Press');
+  const [exerciseHistory, setExerciseHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
   const load = async (p: typeof period = period) => {
     setLoading(true);
     try {
@@ -207,9 +213,37 @@ export default function FitnessProgress() {
     }
   }
 
+  // --- MODIFIED: Simplified fetchExerciseHistory function ---
+  const fetchExerciseHistory = async () => {
+    if (!exerciseQuery.trim()) {
+      setHistoryError("Please enter an exercise name.");
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      // The API now returns the data pre-calculated and ready for the chart.
+      const { data } = await api.get(`/progress/exercise/${exerciseQuery}`);
+      
+      const chartData = data.map(entry => ({
+        ...entry,
+        date: new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      }));
+
+      setExerciseHistory(chartData);
+    } catch (err) {
+      console.error("Failed to fetch exercise history:", err);
+      setHistoryError(err.response?.data?.detail || `No history found for "${exerciseQuery}".`);
+      setExerciseHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
-    load()
-  }, [])
+    load();
+    fetchExerciseHistory();
+  }, []);
 
   const handlePeriodChange = (newPeriod: typeof period) => {
     setPeriod(newPeriod)
@@ -231,11 +265,11 @@ export default function FitnessProgress() {
     { name: 'Fat', value: data.summary.total_fats_g, color: '#F59E0B' }
   ] : []
 
-  const workoutCategories = [
-    { name: 'Strength', value: 45, color: '#6366F1' },
-    { name: 'Cardio', value: 30, color: '#EC4899' },
-    { name: 'Mobility', value: 25, color: '#10B981' }
-  ]
+  // const workoutCategories = [
+  //   { name: 'Strength', value: 45, color: '#6366F1' },
+  //   { name: 'Cardio', value: 30, color: '#EC4899' },
+  //   { name: 'Mobility', value: 25, color: '#10B981' }
+  // ]
 
   if (loading && !data) {
     return (
@@ -329,64 +363,56 @@ export default function FitnessProgress() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Left Column - Workout Progress */}
           <div className="xl:col-span-2 space-y-6">
-            {/* Workout Trends Chart */}
+            {/* --- MODIFIED: Exercise Performance Tracker Chart --- */}
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Workout Progress</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setSelectedMetric('workouts')}
-                    className={`px-3 py-1 rounded-lg text-sm transition-all ${
-                      selectedMetric === 'workouts' 
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' 
-                        : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    Workouts
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                <h2 className="text-xl font-semibold text-white">Exercise Performance</h2>
+                <form onSubmit={(e) => { e.preventDefault(); fetchExerciseHistory(); }} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={exerciseQuery}
+                    onChange={(e) => setExerciseQuery(e.target.value)}
+                    placeholder="e.g., Bench Press"
+                    className="w-full sm:w-auto px-3 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button type="submit" disabled={historyLoading} className="p-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50">
+                    {historyLoading ? <div className="w-5 h-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Search className="w-5 h-5" />}
                   </button>
-                  <button
-                    onClick={() => setSelectedMetric('hours')}
-                    className={`px-3 py-1 rounded-lg text-sm transition-all ${
-                      selectedMetric === 'hours' 
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white' 
-                        : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    Hours
-                  </button>
-                </div>
+                </form>
               </div>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data?.workoutTrends}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.15)" />
-                    <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
-                    <YAxis stroke="#94a3b8" fontSize={12} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                        backdropFilter: 'blur(5px)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)', 
-                        borderRadius: '8px',
-                        color: '#f8fafc'
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey={selectedMetric} 
-                      stroke="url(#gradient)" 
-                      strokeWidth={3}
-                      dot={{ fill: '#8b5cf6', stroke: '#1e293b', strokeWidth: 2, r: 4 }}
-                      activeDot={{ r: 6, fill: '#8b5cf6' }}
-                    />
-                    <defs>
-                      <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#3b82f6" />
-                        <stop offset="100%" stopColor="#8b5cf6" />
-                      </linearGradient>
-                    </defs>
-                  </LineChart>
-                </ResponsiveContainer>
+                {historyLoading ? (
+                  <div className="flex items-center justify-center h-full text-slate-400">Loading history...</div>
+                ) : historyError ? (
+                  <div className="flex items-center justify-center h-full text-yellow-400">{historyError}</div>
+                ) : exerciseHistory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={exerciseHistory}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.15)" />
+                      <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
+                      <YAxis stroke="#94a3b8" fontSize={12} label={{ value: 'Volume (kg)', angle: -90, position: 'insideLeft', fill: '#94a3b8' }} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)', 
+                          borderRadius: '8px',
+                          color: '#f8fafc'
+                        }}
+                        formatter={(value) => `${value} kg`}
+                      />
+                      {/* MODIFIED: The dataKey is now 'volume' as calculated by the backend */}
+                      <Bar dataKey="volume" fill="url(#barGradient)" name="Total Volume" radius={[4, 4, 0, 0]} />
+                      <defs>
+                        <linearGradient id="barGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#3b82f6" />
+                          <stop offset="100%" stopColor="#8b5cf6" />
+                        </linearGradient>
+                      </defs>
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-slate-400">No data available for this exercise.</div>
+                )}
               </div>
             </div>
 

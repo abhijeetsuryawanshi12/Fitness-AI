@@ -1,4 +1,3 @@
-# app/routes/plan.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
@@ -92,16 +91,27 @@ async def generate_plan_endpoint(
 
     for day_plan in daily_schedule:
         day_number = day_plan.get("day", 1)
-        # --- CORRECTED LOGIC: Get the base date for the task ---
         task_date_part = today + timedelta(days=day_number - 1)
 
         # Create tasks for exercises if the plan type includes "workout"
         if request.type in ["workout", "workout and diet"] and "exercises" in day_plan:
             for exercise in day_plan.get("exercises", []):
-                # --- CORRECTED LOGIC: Extract time and create precise datetime ---
                 task_time_data = exercise.get("task_time", {})
-                hour = task_time_data.get("hour", 0)
-                minute = task_time_data.get("minute", 0)
+                hour, minute = 0, 0
+                
+                # --- FIX: Check if task_time_data is a string and parse it ---
+                if isinstance(task_time_data, str):
+                    try:
+                        parts = task_time_data.split(':')
+                        hour = int(parts[0])
+                        minute = int(parts[1])
+                    except (ValueError, IndexError):
+                        print(f"Warning: Could not parse time string '{task_time_data}'. Defaulting to 00:00.")
+                        hour, minute = 0, 0
+                elif isinstance(task_time_data, dict):
+                    hour = task_time_data.get("hour", 0)
+                    minute = task_time_data.get("minute", 0)
+                # --- END FIX ---
                 
                 task_datetime = datetime.combine(
                     task_date_part,
@@ -112,7 +122,7 @@ async def generate_plan_endpoint(
                 task_model = Task(
                     user_id=user_id_str,
                     plan_id=new_plan_id,
-                    task_date=task_datetime, # Use the precise datetime
+                    task_date=task_datetime,
                     name=exercise.get("name", "Unnamed Exercise"),
                     details=exercise,
                     type="workout",
@@ -123,10 +133,22 @@ async def generate_plan_endpoint(
         # Create tasks for meals if the plan type includes "diet"
         if request.type in ["diet", "workout and diet"] and "meals" in day_plan:
             for meal in day_plan.get("meals", []):
-                # --- CORRECTED LOGIC: Extract time and create precise datetime ---
                 task_time_data = meal.get("task_time", {})
-                hour = task_time_data.get("hour", 0)
-                minute = task_time_data.get("minute", 0)
+                hour, minute = 0, 0
+                
+                # --- FIX: Check if task_time_data is a string and parse it ---
+                if isinstance(task_time_data, str):
+                    try:
+                        parts = task_time_data.split(':')
+                        hour = int(parts[0])
+                        minute = int(parts[1])
+                    except (ValueError, IndexError):
+                        print(f"Warning: Could not parse time string '{task_time_data}'. Defaulting to 00:00.")
+                        hour, minute = 0, 0
+                elif isinstance(task_time_data, dict):
+                    hour = task_time_data.get("hour", 0)
+                    minute = task_time_data.get("minute", 0)
+                # --- END FIX ---
 
                 task_datetime = datetime.combine(
                     task_date_part,
@@ -137,7 +159,7 @@ async def generate_plan_endpoint(
                 task_model = Task(
                     user_id=user_id_str,
                     plan_id=new_plan_id,
-                    task_date=task_datetime, # Use the precise datetime
+                    task_date=task_datetime,
                     name=meal.get("meal_name", "Unnamed Meal"),
                     details=meal,
                     type="diet",
