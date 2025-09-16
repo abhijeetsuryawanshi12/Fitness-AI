@@ -10,6 +10,7 @@ langchain-mongodb
 langchain-groq
 langchain-google-genai
 python-multipart
+langchain_experimental
 # Vector Store and Document Processing
 chromadb
 langchain-chroma

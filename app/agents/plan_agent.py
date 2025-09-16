@@ -4,7 +4,7 @@ from langchain_groq import ChatGroq
 from langchain.chat_models import init_chat_model
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_experimental.output_parsers import JsonFixingParser # <-- Key import for robustness
+from langchain.output_parsers import OutputFixingParser # <-- Key import for robustness
 from langchain_core.caches import BaseCache
 from app.config import settings
 from typing import Dict
@@ -260,9 +260,9 @@ prompt_part2 = ChatPromptTemplate.from_template(
 
 
 # --- Parsers and Chains with Self-Correction ---
-# We define a base parser and then wrap it with the JsonFixingParser.
+# We define a base parser and then wrap it with the OutputFixingParser.
 base_parser = JsonOutputParser()
-output_parser = JsonFixingParser.from_llm(parser=base_parser, llm=fixer_llm)
+output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=fixer_llm)
 
 # Both chains will now use the same robust, self-correcting parser.
 chain_part1 = prompt_part1 | llm | output_parser

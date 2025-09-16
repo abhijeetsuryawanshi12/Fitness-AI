@@ -23,6 +23,8 @@ import {
   VolumeX
 } from 'lucide-react'
 
+import ReactMarkdown from 'react-markdown';
+
 import api from '@/lib/api'
 import Orb from '@/components/react_bits/Orb';
 
@@ -171,13 +173,23 @@ function MessageBubble({ message, onPlayAudio }) {
                 <Apple className="w-4 h-4 text-green-400" />
                 <span className="text-sm font-medium text-slate-100">Nutrition Analysis</span>
               </div>
-              <p className="text-sm">{message.text}</p>
+              <div className="prose prose-sm prose-invert max-w-none">
+                <ReactMarkdown>{message.text}</ReactMarkdown>
+              </div>
             </div>
           </div>
         )
       default:
         // Use dangerouslySetInnerHTML to render markdown
-        return <div dangerouslySetInnerHTML={{ __html: message.text.replace(/\n/g, '<br />') }} />;
+        // return <div dangerouslySetInnerHTML={{ __html: message.text.replace(/\n/g, '<br />') }} />;
+        if (isUser) {
+          return message.text; // User's text doesn't need markdown styling
+        }
+        return (
+          <div className="prose prose-sm prose-invert max-w-none">
+            <ReactMarkdown>{message.text}</ReactMarkdown>
+          </div>
+        )
     }
   }
 
@@ -197,7 +209,9 @@ function MessageBubble({ message, onPlayAudio }) {
         )}
         <div className="flex flex-col">
           <div className={`rounded-2xl px-4 py-3 text-white ${isUser ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-white/10 backdrop-blur-lg border border-white/20'}`}>
-            {renderMessageContent()}
+              <div className={!isUser ? 'prose prose-sm prose-invert max-w-none' : ''}>
+                {renderMessageContent()}
+              </div>
           </div>
           <div className={`text-xs text-slate-400 mt-1 ${isUser ? 'text-right' : 'text-left'}`}>
             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
