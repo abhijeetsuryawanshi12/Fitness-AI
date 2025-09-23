@@ -58,6 +58,27 @@ def process_and_store_document(file_path: str, user_id: str, document_id: str, f
     return full_text
 
 
+def delete_document_from_vector_store(document_id: str):
+    """
+    Deletes all vector embeddings associated with a specific document_id from ChromaDB.
+
+    Args:
+        document_id: The ID of the document record from MongoDB.
+    """
+    try:
+        # Get the collection object directly from the client
+        collection = chroma_client.get_collection(name=settings.CHROMA_COLLECTION_NAME)
+        
+        # Use the 'where' filter to delete all chunks associated with the document_id
+        collection.delete(where={"document_id": document_id})
+        
+        print(f"Successfully deleted vectors for document_id: {document_id} from ChromaDB.")
+    except Exception as e:
+        print(f"Error deleting vectors for document_id {document_id} from ChromaDB: {e}")
+        # Depending on the desired behavior, you might want to re-raise the exception
+        # or handle it gracefully. For now, we'll just print it.
+
+
 def get_retriever_for_user(user_id: str):
     """
     Creates a retriever that filters documents by user_id.

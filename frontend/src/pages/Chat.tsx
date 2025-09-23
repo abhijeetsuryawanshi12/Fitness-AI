@@ -20,7 +20,8 @@ import {
   MoreVertical,
   Flame,
   Volume2,
-  VolumeX
+  VolumeX,
+  Trash2
 } from 'lucide-react'
 
 import ReactMarkdown from 'react-markdown';
@@ -254,15 +255,50 @@ function FileUploadModal({ isOpen, onClose, onUpload }) {
 
 // Documents Sidebar
 function DocumentsSidebar({ isOpen, onClose }) {
-  const [documents, setDocuments] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
+  const menuRef = useRef(null);
+
+  const fetchDocuments = useCallback(() => {
+    setLoading(true);
+    api.get('/documents')
+      .then(res => setDocuments(res.data))
+      .catch(err => console.error("Failed to fetch documents:", err))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
-      setLoading(true)
-      api.get('/documents').then(res => setDocuments(res.data)).finally(() => setLoading(false))
+      fetchDocuments();
     }
-  }, [isOpen])
+  }, [isOpen, fetchDocuments]);
+
+  const handleDeleteDocument = async (docId: string) => {
+    if (window.confirm('Are you sure you want to delete this document? This will remove it from your chat context permanently.')) {
+      try {
+        await api.delete(`/documents/${docId}`);
+        setDocuments(prevDocs => prevDocs.filter(doc => doc._id !== docId));
+      } catch (error) {
+        console.error("Failed to delete document:", error);
+        alert("Could not delete the document. Please try again.");
+      } finally {
+        setMenuOpenFor(null);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuOpenFor && menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpenFor(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpenFor]);
 
   return (
     <AnimatePresence>
@@ -272,13 +308,66 @@ function DocumentsSidebar({ isOpen, onClose }) {
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed right-0 top-0 h-full w-80 bg-slate-900/80 backdrop-blur-lg border-l border-white/20 z-50 flex flex-col">
             <div className="p-4 border-b border-white/20"><div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-white">Documents</h3><button onClick={onClose} className="p-1 text-slate-300 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button></div></div>
             <div className="flex-1 overflow-y-auto p-4">
-              {loading ? <div className="text-center py-8"><div className="animate-spin w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto" /><p className="text-slate-400 mt-2">Loading documents...</p></div> : <div className="space-y-3">{documents.map(doc => <motion.div key={doc._id} whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.1)' }} className="p-3 bg-white/5 rounded-lg transition-colors cursor-pointer"><div className="flex items-start space-x-3"><FileText className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" /><div className="flex-1 min-w-0"><p className="text-sm font-medium text-white truncate">{doc.filename}</p><p className="text-xs text-slate-400">{doc.created_at && new Date(doc.created_at).toLocaleDateString()}</p></div><button className="p-1 text-slate-500 hover:text-white rounded"><MoreVertical className="w-4 h-4" /></button></div></motion.div>)}</div>}
+              {loading ? <div className="text-center py-8"><div className="animate-spin w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto" /><p className="text-slate-400 mt-2">Loading documents...</p></div> :
+                <div className="space-y-3">
+                  {documents.map(doc => (
+                    <motion.div
+                      key={doc._id}
+                      whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.1)' }}
+                      className="p-3 bg-white/5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-start space-x-3">
+                        <FileText className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{doc.filename}</p>
+                          <p className="text-xs text-slate-400">{doc.created_at && new Date(doc.created_at).toLocaleDateString()}</p>
+                        </div>
+                        <div className="relative" ref={menuOpenFor === doc._id ? menuRef : null}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenFor(menuOpenFor === doc._id ? null : doc._id);
+                            }}
+                            className="p-1 text-slate-500 hover:text-white rounded"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                          <AnimatePresence>
+                            {menuOpenFor === doc._id && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: -10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute right-0 mt-2 w-36 bg-slate-800 border border-white/20 rounded-lg shadow-xl z-10 origin-top-right"
+                              >
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteDocument(doc._id);
+                                  }}
+                                  className="w-full flex items-center space-x-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors rounded-lg"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span>Delete</span>
+                                </button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                  {documents.length === 0 && !loading && (
+                    <p className="text-center text-slate-400 text-sm py-4">No documents uploaded yet.</p>
+                  )}
+                </div>}
             </div>
           </motion.div>
         </>
       )}
     </AnimatePresence>
-  )
+  );
 }
 
 // NEW: Chat History Sidebar

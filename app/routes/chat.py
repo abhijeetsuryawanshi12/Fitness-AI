@@ -20,6 +20,28 @@ CHAT_SESSIONS_COLLECTION = "chat_sessions"
 CHAT_HISTORIES_COLLECTION = "chat_histories"
 
 
+def format_user_profile_context(user: User) -> str:
+    """Formats the user's profile into a readable string for the AI."""
+    if not user:
+        return "User profile is not available."
+    
+    profile_details = [
+        f"Name: {user.name}",
+        f"Age: {user.age if user.age else 'Not specified'}",
+        f"Gender: {user.gender if user.gender else 'Not specified'}",
+        f"Weight: {user.weight if user.weight else 'Not specified'} kg",
+        f"Height: {user.height if user.height else 'Not specified'} cm",
+        f"Primary Goal: {user.primary_goal if user.primary_goal else 'Not specified'}",
+        f"Workout Experience: {user.workout_experience if user.workout_experience else 'Not specified'}",
+        f"Diet Type: {user.diet_type if user.diet_type else 'Anything'}",
+    ]
+    
+    if user.medical_conditions:
+        profile_details.append(f"Medical Conditions: {', '.join(user.medical_conditions)}")
+        
+    return "\n".join(profile_details)
+
+
 def format_plan_context(plan: dict) -> str:
     """Formats the plan dictionary into a readable string for the AI."""
     if not plan or "content" not in plan:
@@ -159,6 +181,8 @@ async def chat_with_agent(
             raise HTTPException(status_code=403, detail="Access to this chat session is forbidden.")
         
     # --- RAG: Retrieve Context ---
+    user_profile_context = format_user_profile_context(current_user)
+    
     latest_plan = await db[PLAN_COLLECTION].find_one({"user_id": user_id_str}, sort=[("created_at", -1)])
     plan_context = format_plan_context(latest_plan)
 
@@ -176,6 +200,7 @@ async def chat_with_agent(
     agent_response_content = await get_chat_response(
         user_input=chat_request.message,
         session_id=session_id,
+        user_profile_context=user_profile_context,
         plan_context=plan_context,
         tasks_context=tasks_context,
         document_context=document_context

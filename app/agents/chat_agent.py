@@ -21,12 +21,13 @@ llm = ChatGoogleGenerativeAI(
 
 # Create a new prompt template that includes context for the RAG technique.
 # This template is designed for conversation and includes a placeholder for memory,
-# the user's plan, their daily tasks, and relevant document context.
+# the user's profile, their plan, their daily tasks, and relevant document context.
 prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a friendly and knowledgeable fitness and nutrition chatbot. Your role is to assist users with their health-related questions in a conversational manner.
 
-You have been provided with several pieces of context to help you provide a personalized response: the user's current fitness/diet plan, their tasks for today, and text from documents they have uploaded.
+You have been provided with several pieces of context to help you provide a personalized response: the user's profile, their current fitness/diet plan, their tasks for today, and text from documents they have uploaded.
 
+- Refer to the 'User Profile' to understand the user's background, goals, and preferences. Address them by name if appropriate.
 - If the user asks about their plan, refer to the 'Plan Context'.
 - If they ask about today's activities, refer to the 'Today's Tasks'.
 - If their question seems related to information that might be in their personal documents (like lab results, doctor's notes, etc.), refer to the 'Relevant Document Context'.
@@ -35,6 +36,9 @@ You have been provided with several pieces of context to help you provide a pers
 - If you don't know the answer, say so. Do not invent information.
 - Keep your answers concise and easy to understand.
 
+---
+USER PROFILE:
+{user_profile_context}
 ---
 PLAN CONTEXT:
 {plan_context}
@@ -74,6 +78,7 @@ chain_with_history = RunnableWithMessageHistory(
 async def get_chat_response(
     user_input: str,
     session_id: str,
+    user_profile_context: str,
     plan_context: str,
     tasks_context: str,
     document_context: str
@@ -81,11 +86,12 @@ async def get_chat_response(
     """
     Generates a conversational response from the chatbot agent using RunnableWithMessageHistory
     with MongoDB as the message store. The history is managed automatically by the chain.
-    This version is enhanced with RAG to include plan, task, and document context.
+    This version is enhanced with RAG to include user profile, plan, task, and document context.
 
     Args:
         user_input: The user's latest message.
         session_id: The unique identifier for the conversation session (we will use the user_id).
+        user_profile_context: A string containing the user's profile details.
         plan_context: A string containing the user's current plan details.
         tasks_context: A string containing the user's tasks for the current day.
         document_context: A string containing relevant snippets from the user's documents.
@@ -99,6 +105,7 @@ async def get_chat_response(
     # The input to the chain now includes the user's message plus all retrieved context.
     input_data = {
         "input": user_input,
+        "user_profile_context": user_profile_context,
         "plan_context": plan_context,
         "tasks_context": tasks_context,
         "document_context": document_context
