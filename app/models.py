@@ -152,15 +152,20 @@ class Plan(BaseModel):
     user_id: str
     type: Literal["workout", "diet", "workout and diet"]
     content: Dict
+    start_date: datetime
+    end_date: datetime
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(
         populate_by_name=True,
         arbitrary_types_allowed=True,
+        json_encoders={datetime: lambda v: v.isoformat(), date: lambda v: v.isoformat()},
         json_schema_extra={"example": {
             "user_id": "60d5f3f7e6c4b4a3e8e1f4b1", "type": "workout",
-            "content": {"plan_summary": "A detailed workout plan..."}
+            "content": {"plan_summary": "A detailed workout plan..."},
+            "start_date": "2024-08-01T00:00:00Z",
+            "end_date": "2024-08-07T23:59:59Z"
         }}
     )
 

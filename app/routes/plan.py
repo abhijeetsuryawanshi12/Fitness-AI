@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict
 from pydantic import BaseModel, Field
 from app.db import get_database
-from app.models import Plan, User, Task
+from app.models import Plan, User, Task, PyObjectId
 from app.agents.plan_agent import generate_full_plan
 from app.security import get_current_user
 from datetime import datetime, timedelta, timezone, time
@@ -14,14 +14,33 @@ router = APIRouter(prefix="/plan", tags=["Plan Generation"])
 class GeneratePlanRequest(BaseModel):
     type: Literal["workout", "diet", "workout and diet"]
 
-# --- NEW ENDPOINT ADDED HERE ---
-@router.get("/latest", response_model=Plan, summary="Get the user's most recent plan")
+# --- NEW: A more flexible response model for backward compatibility ---
+# This model allows start_date and end_date to be optional, so old plans
+# in the database without these fields do not cause a validation error.
+class PlanResponse(BaseModel):
+    id: PyObjectId = Field(..., alias="_id")
+    user_id: str
+    type: Literal["workout", "diet", "workout and diet"]
+    content: Dict
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+@router.get("/latest", response_model=PlanResponse, summary="Get the user's most recent plan")
 async def get_latest_plan(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
     Retrieves the most recently created plan for the authenticated user.
+    This endpoint is backward-compatible with older plan documents that
+    may not have start_date and end_date.
     """
     user_id_str = str(current_user.id)
     
@@ -38,7 +57,6 @@ async def get_latest_plan(
         )
     
     return latest_plan_doc
-# --- END OF NEW ENDPOINT ---
 
 
 @router.post("/generate", response_model=Plan, status_code=status.HTTP_201_CREATED)
@@ -49,7 +67,7 @@ async def generate_plan_endpoint(
 ):
     """
     Generates a new workout, diet, or combined plan for the authenticated user
-    and creates all associated detailed tasks.
+    and creates all associated detailed tasks. All new plans will have a start_date and end_date.
     """
     user_id_str = str(current_user.id)
     user_details = current_user.model_dump()
@@ -66,11 +84,17 @@ async def generate_plan_endpoint(
             detail=f"The AI agent failed to generate a valid plan. Please try again. Error: {e}"
         )
 
-    # 2. Create a new Plan object
+    # 2. Create a new Plan object with start and end dates
+    today_date = datetime.now(timezone.utc).date()
+    start_date = datetime.combine(today_date, time.min, tzinfo=timezone.utc)
+    end_date = datetime.combine(today_date + timedelta(days=6), time.max, tzinfo=timezone.utc)
+
     new_plan = Plan(
         user_id=user_id_str,
         type=request.type,
-        content=plan_content
+        content=plan_content,
+        start_date=start_date,
+        end_date=end_date
     )
     
     plan_data_to_insert = new_plan.model_dump(exclude_none=True, by_alias=True)
@@ -83,7 +107,6 @@ async def generate_plan_endpoint(
 
     # 4. Create structured Task documents from the plan content
     tasks_to_create = []
-    today = datetime.now(timezone.utc).date()
     daily_schedule = plan_content.get("daily_plan", [])
 
     if not daily_schedule:
@@ -91,7 +114,7 @@ async def generate_plan_endpoint(
 
     for day_plan in daily_schedule:
         day_number = day_plan.get("day", 1)
-        task_date_part = today + timedelta(days=day_number - 1)
+        task_date_part = today_date + timedelta(days=day_number - 1)
 
         # Create tasks for exercises if the plan type includes "workout"
         if request.type in ["workout", "workout and diet"] and "exercises" in day_plan:
@@ -99,7 +122,6 @@ async def generate_plan_endpoint(
                 task_time_data = exercise.get("task_time", {})
                 hour, minute = 0, 0
                 
-                # --- FIX: Check if task_time_data is a string and parse it ---
                 if isinstance(task_time_data, str):
                     try:
                         parts = task_time_data.split(':')
@@ -111,7 +133,6 @@ async def generate_plan_endpoint(
                 elif isinstance(task_time_data, dict):
                     hour = task_time_data.get("hour", 0)
                     minute = task_time_data.get("minute", 0)
-                # --- END FIX ---
                 
                 task_datetime = datetime.combine(
                     task_date_part,
@@ -136,7 +157,6 @@ async def generate_plan_endpoint(
                 task_time_data = meal.get("task_time", {})
                 hour, minute = 0, 0
                 
-                # --- FIX: Check if task_time_data is a string and parse it ---
                 if isinstance(task_time_data, str):
                     try:
                         parts = task_time_data.split(':')
@@ -148,7 +168,6 @@ async def generate_plan_endpoint(
                 elif isinstance(task_time_data, dict):
                     hour = task_time_data.get("hour", 0)
                     minute = task_time_data.get("minute", 0)
-                # --- END FIX ---
 
                 task_datetime = datetime.combine(
                     task_date_part,
@@ -174,8 +193,6 @@ async def generate_plan_endpoint(
             print(f"Successfully created {len(tasks_to_create)} tasks for plan {new_plan_id}.")
         except Exception as e:
             print(f"Error bulk inserting tasks for plan {new_plan_id}: {e}")
-            # This is not a critical failure, so we don't raise an HTTPException
-            # The plan was still created. We can log this for monitoring.
     
     # 5. Fetch the newly created plan to return it in the response
     created_plan_doc = await db.plans.find_one({"_id": result.inserted_id})
@@ -201,7 +218,6 @@ async def delete_plan(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid plan ID format.")
 
-    # Find the plan to ensure it exists and belongs to the current user
     plan_to_delete = await db.plans.find_one(
         {"_id": plan_obj_id, "user_id": str(current_user.id)}
     )
@@ -211,14 +227,11 @@ async def delete_plan(
             detail="Plan not found or you do not have permission to delete it."
         )
 
-    # Delete all tasks associated with this plan_id
     delete_tasks_result = await db.tasks.delete_many(
         {"plan_id": plan_id, "user_id": str(current_user.id)}
     )
     print(f"Deleted {delete_tasks_result.deleted_count} tasks for plan {plan_id}.")
 
-    # Delete the plan itself
     await db.plans.delete_one({"_id": plan_obj_id})
 
-    # No content is returned for a 204 response
     return

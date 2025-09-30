@@ -7,7 +7,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain.output_parsers import OutputFixingParser # <-- Key import for robustness
 from langchain_core.caches import BaseCache
 from app.config import settings
-from typing import Dict
+from typing import Dict, Optional
 import os
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -258,15 +258,94 @@ prompt_part2 = ChatPromptTemplate.from_template(
     """
 )
 
+# --- NEW PROMPT for regeneration ---
+prompt_regenerate = ChatPromptTemplate.from_template(
+    """
+    You are the world's best personal trainer and dietician. A user's 7-day plan has just finished. Your task is to generate the plan for the **next 7 days**.
+
+    The new plan must be a logical progression from the previous one. Focus on progressive overload for workouts and variety for diet, while maintaining the user's preferences.
+
+    **User Profile:**
+    - Name: {name}
+    - Age: {age}
+    - Goal: {primary_goal}
+    - Workout Experience: {workout_experience}
+    - Diet Type: {diet_type}
+    (Full profile details were used for the previous plan and are consistent for this one)
+
+    **PREVIOUS 7-DAY PLAN (FOR CONTEXT):**
+    ```json
+    {previous_plan_content}
+    ```
+
+    **CRITICAL INSTRUCTIONS:**
+    1.  Generate a **complete, new 7-day plan** (Day 1 to Day 7) that follows on from the previous plan.
+    2.  **Progression is Key:**
+        - For workouts, slightly increase weights or reps where appropriate. You can introduce 1-2 new exercises to add variation.
+        - For the diet, maintain the overall calorie/macro targets but introduce different meal options to prevent boredom.
+    3.  The title should reflect that this is a continuation (e.g., "Week 2: Progressive Overload").
+    4.  The structure of your response MUST be a single, valid JSON object, identical in format to the previous plan. Do not add any text, explanations, or markdown code fences outside of the JSON object itself.
+
+    **JSON Response Format (Strictly Enforced):**
+    Your entire response must be a single JSON object.
+    {{
+      "title": "string",
+      "daily_plan": [
+        {{
+          "day": int,
+          "theme": "string",
+          "exercises": [
+            {{
+              "name": "string",
+              "sets": int,
+              "reps": int,
+              "weights": [float],
+              "instructions": "string",
+              "task_time": {{"hour": int, "minute": int, "second": int}}
+            }}
+          ],
+          "meals": [
+            {{
+              "meal_name": "string",
+              "nutrition_facts": {{
+                "calories": int,
+                "protein": float,
+                "carbs": float,
+                "total_fat": float,
+                "saturated_fat": float,
+                "trans_fat": float,
+                "polyunsaturated_fat": float,
+                "monounsaturated_fat": float,
+                "cholesterol": float,
+                "sodium": float,
+                "dietary_fiber": float,
+                "sugar": float,
+                "added_sugar": float,
+                "sugar_alcohols": float,
+                "vitamin_d": float,
+                "calcium": float,
+                "iron": float,
+                "potassium": float,
+                "vitamin_a": float,
+                "vitamin_c": float
+              }},
+              "task_time": {{"hour": int, "minute": int, "second": int}}
+            }}
+          ]
+        }}
+      ]
+    }}
+    """
+)
+
 
 # --- Parsers and Chains with Self-Correction ---
-# We define a base parser and then wrap it with the OutputFixingParser.
 base_parser = JsonOutputParser()
 output_parser = OutputFixingParser.from_llm(parser=base_parser, llm=fixer_llm)
 
-# Both chains will now use the same robust, self-correcting parser.
 chain_part1 = prompt_part1 | llm | output_parser
 chain_part2 = prompt_part2 | llm | output_parser
+chain_regenerate = prompt_regenerate | llm | output_parser # NEW CHAIN
 
 # --- Main Generation Function (with robust combination logic) ---
 async def generate_full_plan(user: dict, plan_type: str) -> Dict:
@@ -351,3 +430,36 @@ async def generate_full_plan(user: dict, plan_type: str) -> Dict:
         print(f"CRITICAL ERROR: Final plan failed Pydantic validation: {e}")
         # Return the raw dictionary for debugging purposes if validation fails
         return final_plan_dict
+
+
+# --- NEW FUNCTION for regeneration ---
+async def generate_next_week_plan(user: dict, previous_plan: dict) -> Dict:
+    """
+    Generates the next 7-day plan based on a user's profile and their previous plan.
+    """
+    diet_type_str = user.get("diet_type")
+    if diet_type_str == "Other":
+        other_details = user.get("diet_type_other", "Not specified")
+        diet_type_str = f"Other ({other_details})"
+
+    inputs = {
+        "name": user.get("name"),
+        "age": user.get("age"),
+        "primary_goal": user.get("primary_goal"),
+        "workout_experience": user.get("workout_experience"),
+        "diet_type": diet_type_str,
+        "previous_plan_content": json.dumps(previous_plan.get("content", {}), indent=2)
+    }
+
+    print(f"Regenerating plan for user {user.get('name')}...")
+    regenerated_plan_dict = await chain_regenerate.ainvoke(inputs)
+
+    # Validate and return
+    try:
+        print("Validating the regenerated plan against Pydantic model...")
+        validated_plan = FullPlan(**regenerated_plan_dict)
+        print("Validation successful. Plan regeneration complete.")
+        return validated_plan.model_dump()
+    except Exception as e:
+        print(f"CRITICAL ERROR: Regenerated plan failed Pydantic validation: {e}")
+        return regenerated_plan_dict

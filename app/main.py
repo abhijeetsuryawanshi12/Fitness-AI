@@ -13,7 +13,7 @@ from app.routes.voice import router as voice_router
 from app.routes.notifications import router as notifications_router
 from fastapi.middleware.cors import CORSMiddleware
 # --- NEW IMPORTS for scheduler ---
-from app.scheduler import scheduler
+from app.scheduler import scheduler, regenerate_expiring_plans
 from app.routes.notifications import check_and_send_task_notifications
 
 
@@ -33,8 +33,17 @@ async def lifespan(app: FastAPI):
             id="task_notification_job",
             replace_existing=True
         )
+        # NEW: Add the job for plan regeneration to run once a day (at 2 AM UTC)
+        scheduler.add_job(
+            regenerate_expiring_plans,
+            'cron',
+            hour=2, 
+            minute=0,
+            id="plan_regeneration_job",
+            replace_existing=True
+        )
         scheduler.start()
-        print("Scheduler started.")
+        print("Scheduler started with plan regeneration job.")
     # --- END NEW ---
     yield
     # --- NEW: Shutdown the scheduler ---
