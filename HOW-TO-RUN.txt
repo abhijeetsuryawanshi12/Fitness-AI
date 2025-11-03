@@ -1,0 +1,176 @@
+================================================================================
+                    FITNESS-AI - HOW TO RUN THE APPLICATION
+================================================================================
+
+🎯 FASTEST METHOD (Recommended)
+--------------------------------------------------------------------------------
+1. Navigate to: c:\Users\Admin\Desktop\Fitness-AI
+2. Double-click: START-ALL.bat
+3. Wait for both terminal windows to open
+4. Open browser: http://localhost:5173
+
+That's it! ✅
+
+================================================================================
+
+📖 MANUAL METHOD
+--------------------------------------------------------------------------------
+
+STEP 1: Start Backend (Terminal/CMD #1)
+----------------------------------------
+cd c:\Users\Admin\Desktop\Fitness-AI
+venv\Scripts\activate
+python run.py
+
+✅ Backend running on: http://127.0.0.1:8000
+
+
+STEP 2: Start Frontend (Terminal/CMD #2) - Open NEW terminal!
+--------------------------------------------------------------
+cd c:\Users\Admin\Desktop\Fitness-AI\frontend
+npm run dev
+
+✅ Frontend running on: http://localhost:5173
+
+
+STEP 3: Open Browser
+---------------------
+Go to: http://localhost:5173
+
+================================================================================
+
+⚙️ FIRST TIME SETUP (One-time only)
+--------------------------------------------------------------------------------
+
+1. Install Backend Dependencies
+   -------------------------------
+   cd c:\Users\Admin\Desktop\Fitness-AI
+   venv\Scripts\activate
+   pip install -r requirements.txt
+
+2. Install Frontend Dependencies
+   -------------------------------
+   cd c:\Users\Admin\Desktop\Fitness-AI\frontend
+   npm install
+
+================================================================================
+
+🌐 IMPORTANT URLS
+--------------------------------------------------------------------------------
+Application:        http://localhost:5173
+Backend API:        http://127.0.0.1:8000
+API Documentation:  http://127.0.0.1:8000/docs
+API Redoc:          http://127.0.0.1:8000/redoc
+
+================================================================================
+
+🛑 HOW TO STOP
+--------------------------------------------------------------------------------
+Press Ctrl+C in each terminal window (or close the windows)
+
+================================================================================
+
+🔧 TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+Problem: "Address already in use" (Port 8000 or 5173 busy)
+Solution:
+  netstat -ano | findstr :8000
+  taskkill /PID <number> /F
+
+Problem: Backend won't start / Import errors
+Solution:
+  Make sure virtual environment is activated (you should see "(venv)")
+  Reinstall dependencies: pip install -r requirements.txt
+
+Problem: Frontend won't start / Module errors
+Solution:
+  Delete node_modules: rmdir /s /q node_modules
+  Reinstall: npm install
+
+Problem: Blank page or errors in browser
+Solution:
+  1. Check backend is running (visit http://127.0.0.1:8000/docs)
+  2. Open browser DevTools (F12) and check Console tab
+  3. Clear browser cache (Ctrl+Shift+Delete)
+
+Problem: MongoDB connection failed
+Solution:
+  - Check internet connection
+  - Verify app/.env has correct MONGODB_URI
+  - MongoDB Atlas cluster must be running
+
+================================================================================
+
+📂 PROJECT STRUCTURE
+--------------------------------------------------------------------------------
+Fitness-AI/
+│
+├── START-ALL.bat          ← Double-click to run everything
+├── start-backend.bat      ← Run backend only
+├── start-frontend.bat     ← Run frontend only
+│
+├── app/                   ← Backend (Python/FastAPI)
+│   ├── main.py
+│   ├── .env              ← Backend config (API keys)
+│   └── ...
+│
+├── frontend/              ← Frontend (React/TypeScript)
+│   ├── src/
+│   ├── .env              ← Frontend config
+│   └── package.json
+│
+├── venv/                  ← Python virtual environment
+├── run.py                 ← Backend startup script
+└── requirements.txt       ← Python dependencies
+
+================================================================================
+
+📚 DOCUMENTATION FILES
+--------------------------------------------------------------------------------
+README.md         - Project overview and features
+SETUP.md          - Detailed setup instructions with troubleshooting
+QUICK-START.md    - Quick reference guide
+HOW-TO-RUN.txt    - This file (simple text instructions)
+
+================================================================================
+
+✨ FIRST TIME USING THE APP
+--------------------------------------------------------------------------------
+1. Click "Sign Up" to create an account
+2. Complete the onboarding questionnaire
+3. Go to "Plan" page and click "Generate Plan"
+4. Choose plan type (Workout/Diet/Combined)
+5. Wait ~30 seconds for AI to generate your personalized plan
+6. Check "Tasks" page for daily tasks
+7. Track progress in "Dashboard"
+8. Chat with AI coach in "Chat" page
+
+================================================================================
+
+🔐 ENVIRONMENT VARIABLES
+--------------------------------------------------------------------------------
+Backend (.env):  app/.env
+Frontend (.env): frontend/.env
+
+⚠️ WARNING: Never share these files! They contain API keys and passwords.
+
+================================================================================
+
+💡 TIPS
+--------------------------------------------------------------------------------
+- Keep both terminals open while using the app
+- Backend must be running for frontend to work
+- Check http://127.0.0.1:8000/docs for API documentation
+- Clear browser cache if you see stale data
+- Check browser console (F12) for frontend errors
+- Backend logs appear in Terminal #1
+- Frontend logs appear in Terminal #2
+
+================================================================================
+
+Need more help?
+- Detailed guide: See SETUP.md
+- Quick reference: See QUICK-START.md
+
+================================================================================
