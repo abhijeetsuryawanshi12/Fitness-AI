@@ -62,21 +62,87 @@ def delete_document_from_vector_store(document_id: str):
     """
     Deletes all vector embeddings associated with a specific document_id from ChromaDB.
 
+    This function now raises exceptions instead of silently catching them,
+    allowing the caller to handle state consistency.
+
     Args:
         document_id: The ID of the document record from MongoDB.
+
+    Raises:
+        Exception: If deletion from ChromaDB fails
     """
     try:
         # Get the collection object directly from the client
         collection = chroma_client.get_collection(name=settings.CHROMA_COLLECTION_NAME)
-        
+
         # Use the 'where' filter to delete all chunks associated with the document_id
         collection.delete(where={"document_id": document_id})
-        
+
         print(f"Successfully deleted vectors for document_id: {document_id} from ChromaDB.")
     except Exception as e:
         print(f"Error deleting vectors for document_id {document_id} from ChromaDB: {e}")
-        # Depending on the desired behavior, you might want to re-raise the exception
-        # or handle it gracefully. For now, we'll just print it.
+        # Re-raise the exception so the caller can handle it properly
+        raise Exception(f"Failed to delete from ChromaDB: {e}") from e
+
+
+def get_document_chunks_from_vector_store(document_id: str):
+    """
+    Retrieves all vector chunks associated with a document for backup/rollback purposes.
+
+    Args:
+        document_id: The ID of the document record from MongoDB.
+
+    Returns:
+        List of document chunks with their embeddings and metadata
+
+    Raises:
+        Exception: If retrieval from ChromaDB fails
+    """
+    try:
+        # Get the collection object directly from the client
+        collection = chroma_client.get_collection(name=settings.CHROMA_COLLECTION_NAME)
+
+        # Query all chunks for this document
+        results = collection.get(where={"document_id": document_id})
+
+        print(f"Retrieved {len(results['ids']) if results['ids'] else 0} chunks for document_id: {document_id}")
+        return results
+    except Exception as e:
+        print(f"Error retrieving chunks for document_id {document_id} from ChromaDB: {e}")
+        raise Exception(f"Failed to retrieve from ChromaDB: {e}") from e
+
+
+def restore_document_to_vector_store(document_id: str, chunks_data: dict):
+    """
+    Restores document chunks to ChromaDB (used for rollback after failed deletion).
+
+    Args:
+        document_id: The ID of the document record from MongoDB.
+        chunks_data: The chunks data retrieved from get_document_chunks_from_vector_store
+
+    Raises:
+        Exception: If restoration to ChromaDB fails
+    """
+    try:
+        # Get the collection object directly from the client
+        collection = chroma_client.get_collection(name=settings.CHROMA_COLLECTION_NAME)
+
+        if not chunks_data or not chunks_data.get('ids'):
+            print(f"No chunks to restore for document_id: {document_id}")
+            return
+
+        # Add the chunks back to ChromaDB
+        collection.add(
+            ids=chunks_data['ids'],
+            embeddings=chunks_data.get('embeddings'),
+            metadatas=chunks_data.get('metadatas'),
+            documents=chunks_data.get('documents')
+        )
+
+        print(f"Successfully restored {len(chunks_data['ids'])} chunks for document_id: {document_id}")
+    except Exception as e:
+        print(f"CRITICAL: Failed to restore chunks for document_id {document_id}: {e}")
+        raise Exception(f"Failed to restore to ChromaDB: {e}") from e
 
 
 def get_retriever_for_user(user_id: str):

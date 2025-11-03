@@ -1,6 +1,8 @@
 import { Route, Routes, NavLink } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
+import ToastProvider from './components/ToastProvider';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -11,6 +13,7 @@ import Tasks from './pages/Tasks';
 import Profile from './pages/Profile';
 import Plan from './pages/Plan';
 import Progress from './pages/Progress';
+import ErrorBoundaryTest from './components/ErrorBoundaryTest';
 import { Dumbbell } from 'lucide-react';
 
 import Prism from './components/react_bits/Prism';
@@ -55,49 +58,55 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      {/* Background */}
-      {/* <div style={{ width: '100%', height: '600px', position: 'relative' }}>
-        <Prism
-          animationType="rotate"
-          timeScale={0.5}
-          height={3.5}
-          baseWidth={5.5}
-          scale={3.6}
-          hueShift={0}
-          colorFrequency={1}
-          noise={0.5}
-          glow={1}
-        />
-      </div> */}
+    <ErrorBoundary>
+      <ToastProvider />
+      <div className="relative min-h-screen overflow-hidden">
+        {/* Background */}
+        {/* <div style={{ width: '100%', height: '600px', position: 'relative' }}>
+          <Prism
+            animationType="rotate"
+            timeScale={0.5}
+            height={3.5}
+            baseWidth={5.5}
+            scale={3.6}
+            hueShift={0}
+            colorFrequency={1}
+            noise={0.5}
+            glow={1}
+          />
+        </div> */}
 
-      {/* Foreground (all routes) */}
-      <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
-        <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
+        {/* Foreground (all routes) */}
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<AuthLayout><Login /></AuthLayout>} />
+          <Route path="/register" element={<AuthLayout><Register /></AuthLayout>} />
 
-        {/* Onboarding route */}
-        <Route
-          path="/onboarding"
-          element={
-            <ProtectedRoute>
-              <Onboarding />
-            </ProtectedRoute>
-          }
-        />
+          {/* Onboarding route */}
+          <Route
+            path="/onboarding"
+            element={
+              <ProtectedRoute>
+                <Onboarding />
+              </ProtectedRoute>
+            }
+          />
 
-        {/* Main application routes */}
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/tasks" element={<Tasks />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/plan" element={<Plan />} />
-          <Route path="/progress" element={<Progress />} />
-        </Route>
-      </Routes>
-    </div>
+          {/* Test route (development only - remove in production) */}
+          <Route path="/test-errors" element={<ErrorBoundaryTest />} />
+
+          {/* Main application routes */}
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/plan" element={<Plan />} />
+            <Route path="/progress" element={<Progress />} />
+          </Route>
+        </Routes>
+      </div>
+    </ErrorBoundary>
   );
 }

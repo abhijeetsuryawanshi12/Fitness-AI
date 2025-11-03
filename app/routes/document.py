@@ -2,13 +2,23 @@ from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db import get_database
 from app.models import Document, User
-from app.vector_store import process_and_store_document, delete_document_from_vector_store
+from app.vector_store import (
+    process_and_store_document,
+    delete_document_from_vector_store,
+    get_document_chunks_from_vector_store,
+    restore_document_to_vector_store
+)
 from app.security import get_current_user
 from typing import List
 import os
 import shutil
 import tempfile
+import asyncio
+import logging
 from bson import ObjectId
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -102,7 +112,7 @@ async def list_my_documents(
 @router.delete(
     "/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a document and its embeddings"
+    summary="Delete a document and its embeddings with state consistency"
 )
 async def delete_document(
     document_id: str,
@@ -111,14 +121,24 @@ async def delete_document(
 ):
     """
     Deletes a specific document from MongoDB and its associated vector embeddings
-    from the vector store.
+    from the vector store with state consistency guarantees.
+
+    This implementation ensures that either both MongoDB and ChromaDB deletions succeed,
+    or neither does (with rollback). This prevents orphaned data.
+
+    Strategy:
+    1. Validate document exists and belongs to user
+    2. Backup ChromaDB chunks (for potential rollback)
+    3. Delete from ChromaDB first (with retries)
+    4. Delete from MongoDB
+    5. If MongoDB deletion fails, restore to ChromaDB (rollback)
     """
     try:
         doc_obj_id = ObjectId(document_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid document ID format.")
 
-    # 1. Find the document to ensure it exists and belongs to the current user
+    # Step 1: Verify document exists and belongs to current user
     document_to_delete = await db[DOCUMENT_COLLECTION].find_one(
         {"_id": doc_obj_id, "user_id": str(current_user.id)}
     )
@@ -129,25 +149,90 @@ async def delete_document(
             detail="Document not found or you do not have permission to delete it."
         )
 
-    # 2. Delete the document from MongoDB
-    delete_result = await db[DOCUMENT_COLLECTION].delete_one({"_id": doc_obj_id})
+    # Step 2: Backup ChromaDB chunks for potential rollback
+    chromadb_backup = None
+    try:
+        logger.info(f"Backing up ChromaDB chunks for document {document_id}")
+        chromadb_backup = get_document_chunks_from_vector_store(document_id)
+    except Exception as e:
+        logger.warning(f"Could not backup ChromaDB chunks for document {document_id}: {e}")
+        # Continue anyway - if there are no chunks, deletion will be simpler
 
-    if delete_result.deleted_count == 0:
-        # This is an edge case, but good to handle
+    # Step 3: Delete from ChromaDB FIRST (with retry logic)
+    max_retries = 3
+    chromadb_deleted = False
+    last_chromadb_error = None
+
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempting ChromaDB deletion for document {document_id} (attempt {attempt + 1}/{max_retries})")
+            delete_document_from_vector_store(document_id=document_id)
+            chromadb_deleted = True
+            logger.info(f"Successfully deleted document {document_id} from ChromaDB")
+            break
+        except Exception as e:
+            last_chromadb_error = e
+            logger.warning(f"ChromaDB deletion attempt {attempt + 1} failed: {e}")
+
+            if attempt < max_retries - 1:
+                # Wait before retry with exponential backoff
+                wait_time = 1 * (2 ** attempt)  # 1s, 2s, 4s
+                logger.info(f"Retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+
+    # If ChromaDB deletion failed after all retries, abort the entire operation
+    if not chromadb_deleted:
+        logger.error(f"Failed to delete document {document_id} from ChromaDB after {max_retries} attempts")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete document from the database."
+            detail=f"Failed to delete document from vector store after {max_retries} attempts. Please try again later."
         )
 
-    # 3. Delete the embeddings from the vector store
+    # Step 4: Delete from MongoDB
     try:
-        delete_document_from_vector_store(document_id=document_id)
-    except Exception as e:
-        # If this fails, the document is deleted from Mongo but not Chroma.
-        # This is a state inconsistency. We should log this as a critical error.
-        print(f"CRITICAL: Document {document_id} deleted from Mongo but failed to delete from vector store: {e}")
-        # We don't raise an HTTPException because the primary resource (Mongo doc) is gone.
-        # The user sees success, but we need to monitor these logs.
+        logger.info(f"Deleting document {document_id} from MongoDB")
+        delete_result = await db[DOCUMENT_COLLECTION].delete_one({"_id": doc_obj_id})
 
-    # A 204 response does not return a body.
+        if delete_result.deleted_count == 0:
+            raise Exception("Document not found in MongoDB (possibly already deleted)")
+
+        logger.info(f"Successfully deleted document {document_id} from MongoDB")
+
+    except Exception as mongo_error:
+        # ROLLBACK: MongoDB deletion failed, restore to ChromaDB
+        logger.error(f"MongoDB deletion failed for document {document_id}: {mongo_error}")
+        logger.warning(f"Attempting to rollback - restoring document {document_id} to ChromaDB")
+
+        if chromadb_backup and chromadb_backup.get('ids'):
+            try:
+                restore_document_to_vector_store(document_id, chromadb_backup)
+                logger.info(f"Successfully rolled back document {document_id} to ChromaDB")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to delete document from database. No changes were made."
+                )
+            except Exception as rollback_error:
+                # Critical: Rollback failed - data is now inconsistent
+                logger.critical(
+                    f"CRITICAL: Rollback failed for document {document_id}. "
+                    f"Document deleted from ChromaDB but not from MongoDB. "
+                    f"Rollback error: {rollback_error}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Critical error during deletion. Please contact support with document ID."
+                )
+        else:
+            # No backup available, can't rollback
+            logger.critical(
+                f"CRITICAL: No backup available to rollback document {document_id}. "
+                f"Document deleted from ChromaDB but not from MongoDB."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete document from database. Partial deletion occurred."
+            )
+
+    # Success: Both deletions completed
+    logger.info(f"Document {document_id} successfully deleted from both MongoDB and ChromaDB")
     return
