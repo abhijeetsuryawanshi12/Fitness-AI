@@ -206,7 +206,7 @@ def get_database() -> AsyncIOMotorDatabase:
     Use with dependency injection in FastAPI routes.
     For runtime connection checks, use ensure_connection() in your routes.
     """
-    if not db.db:
+    if db.db is None:
         raise RuntimeError(
             "Database not initialized. Call connect_to_mongo() first."
         )
